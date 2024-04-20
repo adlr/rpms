@@ -7,3 +7,7 @@ git fetch upstream
 cd ..
 
 git clone https://src.fedoraproject.org/rpms/mutter.git mutter-rpm
+cd mutter-rpm
+git remote add adlr git@github.com:adlr/mutter-rpm.git
+git fetch adlr
+cd ..
