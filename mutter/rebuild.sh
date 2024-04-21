@@ -7,7 +7,7 @@ if [ "$(whoami)" != "root" ] ; then
    exit 1
 fi
 
-sudo -u adlr CC="ccache gcc" CXX="ccache g++" fedpkg local | tee build.log
+sudo -u adlr CC="ccache gcc" CXX="ccache g++" fedpkg --name mutter --namespace rpms --verbose local | tee build.log
 
 if grep warning: build.log | grep -qv whitespace | grep -vE 'clutter-stage.c:3879:24: warning: unused variable ‘priv’'; then
    echo "Bad warnings in log. exiting"
