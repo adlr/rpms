@@ -1,0 +1,641 @@
+From 4710143434fb3b3dd46caee096c237c8a390944b Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@gmail.com>
+Date: Sat, 20 Apr 2024 19:23:46 -0700
+Subject: [PATCH 1/8] ClutterEvent: Allow setting scroll delta on event
+
+---
+ clutter/clutter/clutter-event.c | 22 ++++++++++++++++++++++
+ clutter/clutter/clutter-event.h |  4 ++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/clutter/clutter/clutter-event.c b/clutter/clutter/clutter-event.c
+index bcda1bb7b..e0769d472 100644
+--- a/clutter/clutter/clutter-event.c
++++ b/clutter/clutter/clutter-event.c
+@@ -566,6 +566,28 @@ clutter_event_get_related (const ClutterEvent *event)
+   return event->crossing.related;
+ }
+ 
++/**
++ * clutter_event_set_scroll_delta:
++ * @event: a #ClutterEvent of type %CLUTTER_SCROLL
++ * @dx: delta on the horizontal axis
++ * @dy: delta on the vertical axis
++ *
++ * Sets the precise scrolling information of @event.
++ */
++void
++clutter_event_set_scroll_delta (ClutterEvent *event,
++                                gdouble       dx,
++                                gdouble       dy)
++{
++  g_return_if_fail (event != NULL);
++  g_return_if_fail (event->type == CLUTTER_SCROLL);
++
++  event->scroll.direction = CLUTTER_SCROLL_SMOOTH;
++
++  event->scroll.delta_x = dx;
++  event->scroll.delta_y = dy;
++}
++
+ /**
+  * clutter_event_get_scroll_delta:
+  * @event: a #ClutterEvent of type %CLUTTER_SCROLL
+diff --git a/clutter/clutter/clutter-event.h b/clutter/clutter/clutter-event.h
+index 62f244c05..af097052b 100644
+--- a/clutter/clutter/clutter-event.h
++++ b/clutter/clutter/clutter-event.h
+@@ -214,6 +214,10 @@ ClutterActor *          clutter_event_get_related               (const ClutterEv
+ CLUTTER_EXPORT
+ ClutterScrollDirection  clutter_event_get_scroll_direction      (const ClutterEvent     *event);
+ CLUTTER_EXPORT
++void                    clutter_event_set_scroll_delta          (ClutterEvent           *event,
++                                                                 gdouble                 dx,
++                                                                 gdouble                 dy);
++CLUTTER_EXPORT
+ void                    clutter_event_get_scroll_delta          (const ClutterEvent     *event,
+                                                                  gdouble                *dx,
+                                                                  gdouble                *dy);
+-- 
+2.44.0
+
+
+From f802f259ed5808b4acd1c818c86db034520318b2 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@gmail.com>
+Date: Sat, 20 Apr 2024 19:40:11 -0700
+Subject: [PATCH 2/8] ClutterEvent: Allow setting finish flags
+
+---
+ clutter/clutter/clutter-event.c | 9 +++++++++
+ clutter/clutter/clutter-event.h | 4 ++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/clutter/clutter/clutter-event.c b/clutter/clutter/clutter-event.c
+index e0769d472..1e445631d 100644
+--- a/clutter/clutter/clutter-event.c
++++ b/clutter/clutter/clutter-event.c
+@@ -1592,6 +1592,15 @@ clutter_event_get_scroll_source (const ClutterEvent *event)
+   return event->scroll.scroll_source;
+ }
+ 
++void
++clutter_event_set_scroll_finish_flags (ClutterEvent *event,
++                                       ClutterScrollFinishFlags finish_flags)
++{
++  g_return_if_fail (event != NULL);
++  g_return_if_fail (event->type == CLUTTER_SCROLL);
++
++  event->scroll.finish_flags = finish_flags;
++}
+ /**
+  * clutter_event_get_scroll_finish_flags:
+  * @event: an scroll event
+diff --git a/clutter/clutter/clutter-event.h b/clutter/clutter/clutter-event.h
+index af097052b..6672904d4 100644
+--- a/clutter/clutter/clutter-event.h
++++ b/clutter/clutter/clutter-event.h
+@@ -260,6 +260,10 @@ void                    clutter_event_get_gesture_motion_delta_unaccelerated (co
+ CLUTTER_EXPORT
+ ClutterScrollSource      clutter_event_get_scroll_source             (const ClutterEvent     *event);
+ 
++CLUTTER_EXPORT
++void                     clutter_event_set_scroll_finish_flags       (ClutterEvent             *event,
++                                                                      ClutterScrollFinishFlags  finish_flags);
++
+ CLUTTER_EXPORT
+ ClutterScrollFinishFlags clutter_event_get_scroll_finish_flags       (const ClutterEvent     *event);
+ 
+-- 
+2.44.0
+
+
+From 8b73278325133b8855d9f800270a373e4f998671 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sat, 29 Apr 2023 20:11:51 -0700
+Subject: [PATCH 3/8] Draft: test fixes to avoid struts covering maximized
+ windows.
+
+window.c: Don't let the ACK from a configuration change from the
+client squash a pending constrain operation.
+
+meta-window-wayland.c: Force resize operations to go through the
+client. Cases to consider:
+
+1) Simple move operations (window dragging) should not go to the
+client but happen immediately.
+
+2) Resize operations should go to the client. Sometimes detecting
+resize by comparing future size with existing doesn't work right
+(could use debugging), so force all resizes to go to client.
+
+3) Make sure that a maximized window being constrained will go to the
+client.
+---
+ src/core/window.c                 | 9 +++++++--
+ src/wayland/meta-window-wayland.c | 1 +
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/src/core/window.c b/src/core/window.c
+index 47c29d94a..d70c971c6 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -3785,8 +3785,13 @@ meta_window_move_resize_internal (MetaWindow          *window,
+ 
+   did_placement = !window->placed && window->calc_placement;
+ 
+-  /* We don't need it in the idle queue anymore. */
+-  meta_window_unqueue (window, META_QUEUE_MOVE_RESIZE);
++  /* We don't need it in the idle queue anymore, but we keep it in
++   * idle queue on ACKed configurations from Wayland clients, as the
++   * ACKed configuration may be more stale than the idel wueued
++   * request.
++   */
++  if (~flags & META_MOVE_RESIZE_WAYLAND_FINISH_MOVE_RESIZE)
++    meta_window_unqueue (window, META_QUEUE_MOVE_RESIZE);
+ 
+   if ((flags & META_MOVE_RESIZE_RESIZE_ACTION) && (flags & META_MOVE_RESIZE_MOVE_ACTION))
+     {
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 354183106..1a36306c4 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -392,6 +392,7 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+         }
+       else if (constrained_rect.width != window->rect.width ||
+                constrained_rect.height != window->rect.height ||
++               flags & META_MOVE_RESIZE_RESIZE_ACTION ||
+                flags & META_MOVE_RESIZE_STATE_CHANGED)
+         {
+           MetaWaylandWindowConfiguration *configuration;
+-- 
+2.44.0
+
+
+From 3e168bb8eb9390cac81979e5c980dd4543471e9f Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sun, 19 Feb 2023 09:14:26 -0800
+Subject: [PATCH 4/8] adlr: hide mouse cursor when typing
+
+show mouse cursor on any mouse event.
+
+This is b/c when the mouse pointer is hidden, the window loses mouse
+focus. That's fine when you're typing, but if you want to scroll, you
+need that focus to be present. I looked at trying to work around this
+by making a bigger diff, but I never got it to work when going in/out
+of overview mode, and a bigger diff is a risk when carrying this
+downstream.
+---
+ src/backends/meta-backend.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
+index 0fb880fab..6c449f554 100644
+--- a/src/backends/meta-backend.c
++++ b/src/backends/meta-backend.c
+@@ -50,6 +50,7 @@
+ 
+ #include "backends/meta-backend-private.h"
+ 
++#include <linux/input.h>
+ #include <stdlib.h>
+ 
+ #include "backends/meta-barrier-private.h"
+@@ -1109,6 +1110,16 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+         meta_cursor_tracker_set_pointer_visible (cursor_tracker, FALSE);
+       break;
+     case CLUTTER_KEYBOARD_DEVICE:
++      /* meta_topic (META_DEBUG_BACKEND, "keyboard evt 0x%x 0x%02x %d", */
++      /*             clutter_event_get_state(event), */
++      /*             clutter_event_get_key_unicode(event), */
++      /*             clutter_event_get_event_code(event)); */
++      if (clutter_event_type(event) == CLUTTER_KEY_PRESS &&
++          clutter_event_get_state(event) <= 1 &&  // Modifiers: none or just shift
++          (clutter_event_get_key_unicode(event) > 0 ||  // Key: has some text or is escape OR
++           (clutter_event_get_event_code(event) >= KEY_LINEFEED &&  // key is a nav key
++            clutter_event_get_event_code(event) <= KEY_DELETE)))
++        meta_cursor_tracker_set_pointer_visible (cursor_tracker, FALSE);
+     case CLUTTER_PAD_DEVICE:
+     case CLUTTER_EXTENSION_DEVICE:
+     case CLUTTER_JOYSTICK_DEVICE:
+-- 
+2.44.0
+
+
+From 8c5a98083cb3217c43e4a96ddc70415402e67580 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sun, 26 Feb 2023 19:52:49 -0800
+Subject: [PATCH 5/8] adlr: hacks to slow down Chrome scroll speed and honor
+ scroll stops
+
+---
+ src/core/events.c | 28 ++++++++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/src/core/events.c b/src/core/events.c
+index f766b806d..9de387780 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -358,6 +358,34 @@ meta_display_handle_event (MetaDisplay        *display,
+     }
+ 
+   window = get_window_for_event (display, event, event_actor);
++  if (window && clutter_event_type(event) == CLUTTER_SCROLL &&
++      clutter_event_get_scroll_direction(event) == CLUTTER_SCROLL_SMOOTH) {
++    const char* text = meta_window_get_wm_class(window);
++    gdouble dx, dy;
++    clutter_event_get_scroll_delta(event, &dx, &dy);
++    const char* prefix = "google-chrome";
++    if (text && !strncmp(text, prefix, strlen(prefix))) {
++      dx *= (0.6 * 53.0/120.0);
++      dy *= (0.6 * 53.0/120.0);
++
++      // Hack to transform finished flags to 0-len scrolls
++      // Since Chrome 109 is ignoring finished flags
++      ClutterScrollFinishFlags finish_flags =
++        clutter_event_get_scroll_finish_flags(event);
++      if (finish_flags & CLUTTER_SCROLL_FINISHED_VERTICAL) {
++        dy = 0;
++      }
++      if (finish_flags & CLUTTER_SCROLL_FINISHED_HORIZONTAL) {
++        dx = 0;
++      }
++      // Const cast -- yucky
++      clutter_event_set_scroll_finish_flags((ClutterEvent*)event,
++                                            CLUTTER_SCROLL_FINISHED_NONE);
++    }
++
++    // Const cast -- yucky
++    clutter_event_set_scroll_delta((ClutterEvent*)event, dx, dy);
++  }
+ 
+   if (window && !window->override_redirect &&
+       (event_type == CLUTTER_KEY_PRESS ||
+-- 
+2.44.0
+
+
+From 3c7c11050ec72c903c16ed83eb1d1d62f4287cb2 Mon Sep 17 00:00:00 2001
+From: Aleksandr Mezin <mezin.alexander@gmail.com>
+Date: Fri, 5 Mar 2021 14:38:57 +0600
+Subject: [PATCH 6/8] wayland/window: Correct detection whether to send
+ `configure`
+
+When deciding if `configure` event should be sent,
+`meta_window_wayland_move_resize_internal` compares requested window size
+with `window->rect` size. However, `window->rect` is only updated when `commit`
+is received. So the following sequence produces incorrect result:
+
+1. a window initially has size `size1`
+2. `move_resize_internal` is called with `size2`. `configure` is sent
+3. `move_resize_internal` is called with `size1` to restore original size,
+but `commit` for `size2` haven't arrived yet. So `window->rect` still has size
+`size1`, and thus new `configure` is not sent
+4. `commit` for `size2` arrives, window changes size to `size2`
+
+Expected window size in the end: `size1`
+Actual: `size2`
+
+To fix the issue, take size from pending `configure` events into account.
+
+Fixes https://gitlab.gnome.org/GNOME/mutter/-/issues/1627
+
+Part-of: <https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/1755>
+---
+ src/wayland/meta-window-wayland.c | 39 +++++++++++++++++++++++++++----
+ src/wayland/meta-window-wayland.h |  4 ++++
+ 2 files changed, 38 insertions(+), 5 deletions(-)
+
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 1a36306c4..63bd90f98 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -341,6 +341,12 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+     }
+   else
+     {
++      int pending_width;
++      int pending_height;
++      meta_window_wayland_get_pending_size (wl_window,
++                                            &pending_width,
++                                            &pending_height);
++
+       if (window->placement.rule)
+         {
+           switch (window->placement.state)
+@@ -355,8 +361,8 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+                 if (flags & META_MOVE_RESIZE_PLACEMENT_CHANGED ||
+                     rel_x != wl_window->last_sent_rel_x ||
+                     rel_y != wl_window->last_sent_rel_y ||
+-                    constrained_rect.width != window->rect.width ||
+-                    constrained_rect.height != window->rect.height)
++                    constrained_rect.width != pending_width ||
++                    constrained_rect.height != pending_height)
+                   {
+                     MetaWaylandWindowConfiguration *configuration;
+ 
+@@ -390,9 +396,8 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+               break;
+             }
+         }
+-      else if (constrained_rect.width != window->rect.width ||
+-               constrained_rect.height != window->rect.height ||
+-               flags & META_MOVE_RESIZE_RESIZE_ACTION ||
++      else if (constrained_rect.width != pending_width ||
++               constrained_rect.height != pending_height ||
+                flags & META_MOVE_RESIZE_STATE_CHANGED)
+         {
+           MetaWaylandWindowConfiguration *configuration;
+@@ -1447,3 +1452,27 @@ meta_window_wayland_is_acked_fullscreen (MetaWindowWayland *wl_window)
+   return (wl_window->last_acked_configuration &&
+           wl_window->last_acked_configuration->is_fullscreen);
+ }
++
++void
++meta_window_wayland_get_pending_size (MetaWindowWayland *wl_window,
++                                      int               *width,
++                                      int               *height)
++{
++  MetaWindow *window = META_WINDOW (wl_window);
++  GList *l;
++
++  for (l = wl_window->pending_configurations; l; l = l->next)
++    {
++      MetaWaylandWindowConfiguration *configuration = l->data;
++
++      if (configuration->has_size)
++        {
++          *width = configuration->width;
++          *height = configuration->height;
++          return;
++        }
++    }
++
++  *width = window->rect.width;
++  *height = window->rect.height;
++}
+diff --git a/src/wayland/meta-window-wayland.h b/src/wayland/meta-window-wayland.h
+index a02224e55..c1d08a3c4 100644
+--- a/src/wayland/meta-window-wayland.h
++++ b/src/wayland/meta-window-wayland.h
+@@ -76,3 +76,7 @@ gboolean meta_window_wayland_is_resize (MetaWindowWayland *wl_window,
+ 
+ META_EXPORT_TEST
+ gboolean meta_window_wayland_is_acked_fullscreen (MetaWindowWayland *wl_window);
++
++void meta_window_wayland_get_pending_size (MetaWindowWayland *wl_window,
++                                           int               *width,
++                                           int               *height);
+-- 
+2.44.0
+
+
+From 5e29dc3edc6fcc8159bad519699d2458aaa4e197 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sat, 6 May 2023 15:21:21 -0700
+Subject: [PATCH 7/8] adlr: debug info
+
+---
+ src/compositor/meta-window-drag.c |  7 +++++
+ src/core/window.c                 | 43 +++++++++++++++++++++++++
+ src/wayland/meta-window-wayland.c | 52 +++++++++++++++++++++++++++++++
+ 3 files changed, 102 insertions(+)
+
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index 0cdf1fb10..a679dfb6f 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -1457,6 +1457,9 @@ update_resize (MetaWindowDrag          *window_drag,
+ 
+   new_rect.width = window_drag->initial_window_pos.width;
+   new_rect.height = window_drag->initial_window_pos.height;
++  meta_warning("update_resize: (%d, %d) delta(%d, %d) anch(w: %d, h: %d)\n",
++               x, y, dx, dy,
++               new_rect.width, new_rect.height);
+ 
+   /* Don't bother doing anything if no move has been specified.  (This
+    * happens often, even in keyboard resizing, due to the warping of the
+@@ -1546,6 +1549,7 @@ update_resize_cb (gpointer user_data)
+ {
+   MetaWindowDrag *window_drag = user_data;
+ 
++  meta_warning("update_resize_cb:\n");
+   window_drag->move_resize_later_id = 0;
+ 
+   update_resize (window_drag,
+@@ -1569,6 +1573,7 @@ queue_update_resize (MetaWindowDrag          *window_drag,
+   window_drag->last_edge_resistance_flags = flags;
+   window_drag->latest_motion_x = x;
+   window_drag->latest_motion_y = y;
++  meta_warning("queue_update_resize: (%d, %d)\n", x, y);
+ 
+   if (window_drag->move_resize_later_id)
+     return;
+@@ -1739,6 +1744,8 @@ process_pointer_event (MetaWindowDrag     *window_drag,
+           if (window->tile_match != NULL)
+             flags |= (META_EDGE_RESISTANCE_SNAP | META_EDGE_RESISTANCE_WINDOWS);
+ 
++          meta_warning("process_pointer_event: (x: %f, y: %f)\n",
++                       x, y);
+           queue_update_resize (window_drag, flags, x, y);
+         }
+       break;
+diff --git a/src/core/window.c b/src/core/window.c
+index d70c971c6..20bb425d6 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -3774,6 +3774,24 @@ meta_window_move_resize_internal (MetaWindow          *window,
+   gboolean moved_or_resized = FALSE;
+   MetaWindowUpdateMonitorFlags update_monitor_flags;
+ 
++  meta_warning("window.c MRI %s %s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s (fr: {x: %d, w: %d (%d)}\n",
++               meta_window_get_wm_class(window),
++               flags & META_MOVE_RESIZE_CONFIGURE_REQUEST ? "CONFIGURE_REQUEST" : "",
++               flags & META_MOVE_RESIZE_USER_ACTION ? "USER_ACTION" : "",
++               flags & META_MOVE_RESIZE_MOVE_ACTION ? "MOVE_ACTION" : "",
++               flags & META_MOVE_RESIZE_RESIZE_ACTION ? "RESIZE_ACTION" : "",
++               flags & META_MOVE_RESIZE_WAYLAND_FINISH_MOVE_RESIZE ? "WAYLAND_FINISH_MOVE_RESIZE" : "",
++               flags & META_MOVE_RESIZE_STATE_CHANGED ? "STATE_CHANGED" : "",
++               flags & META_MOVE_RESIZE_UNMAXIMIZE ? "UNMAXIMIZE" : "",
++               flags & META_MOVE_RESIZE_UNFULLSCREEN ? "UNFULLSCREEN" : "",
++               flags & META_MOVE_RESIZE_FORCE_MOVE ? "FORCE_MOVE" : "",
++               flags & META_MOVE_RESIZE_WAYLAND_STATE_CHANGED ? "WAYLAND_STATE_CHANGED" : "",
++               flags & META_MOVE_RESIZE_FORCE_UPDATE_MONITOR ? "FORCE_UPDATE_MONITOR" : "",
++               flags & META_MOVE_RESIZE_PLACEMENT_CHANGED ? "PLACEMENT_CHANGED" : "",
++               flags & META_MOVE_RESIZE_WAYLAND_CLIENT_RESIZE ? "WAYLAND_CLIENT_RESIZE" : "",
++               flags & META_MOVE_RESIZE_CONSTRAIN ? "CONSTRAIN" : "",
++               frame_rect.x, frame_rect.width, frame_rect.x + frame_rect.width);
++
+   g_return_if_fail (!window->override_redirect);
+ 
+   /* The action has to be a move, a resize or the wayland client
+@@ -3835,6 +3853,18 @@ meta_window_move_resize_internal (MetaWindow          *window,
+       MtkRectangle old_rect;
+       meta_window_get_frame_rect (window, &old_rect);
+ 
++      meta_warning("Window %s pre-constrain: temp:{x: %d, y: %d, w: %d, h: %d (%d)} constr:{x: %d, y: %d, w: %d, h: %d (%d)}\n",
++                   meta_window_get_wm_class(window),
++                   temporary_rect.x,
++                   temporary_rect.y,
++                   temporary_rect.width,
++                   temporary_rect.height,
++                   temporary_rect.x + temporary_rect.width,
++                   constrained_rect.x,
++                   constrained_rect.y,
++                   constrained_rect.width,
++                   constrained_rect.height,
++                   constrained_rect.x + constrained_rect.width);
+       meta_window_constrain (window,
+                              flags,
+                              gravity,
+@@ -3843,6 +3873,18 @@ meta_window_move_resize_internal (MetaWindow          *window,
+                              &temporary_rect,
+                              &rel_x,
+                              &rel_y);
++      meta_warning("Window %s post-constrain: temp:{x: %d, y: %d, w: %d, h: %d (%d)} constr:{x: %d, y: %d, w: %d, h: %d (%d)}\n",
++                   meta_window_get_wm_class(window),
++                   temporary_rect.x,
++                   temporary_rect.y,
++                   temporary_rect.width,
++                   temporary_rect.height,
++                   temporary_rect.x + temporary_rect.width,
++                   constrained_rect.x,
++                   constrained_rect.y,
++                   constrained_rect.width,
++                   constrained_rect.height,
++                   constrained_rect.x + constrained_rect.width);
+     }
+   else if (window->placement.rule)
+     {
+@@ -4180,6 +4222,7 @@ meta_window_resize_frame_with_gravity (MetaWindow *window,
+   flags = ((user_op ? META_MOVE_RESIZE_USER_ACTION : 0) |
+            META_MOVE_RESIZE_RESIZE_ACTION |
+            META_MOVE_RESIZE_CONSTRAIN);
++  meta_warning("meta_window_resize_frame_with_gravity: (w: %d, h: %d)\n", w, h);
+   meta_window_move_resize_internal (window, flags, gravity, rect);
+ }
+ 
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 63bd90f98..7c2c55131 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -192,6 +192,27 @@ static void
+ meta_window_wayland_configure (MetaWindowWayland              *wl_window,
+                                MetaWaylandWindowConfiguration *configuration)
+ {
++  MetaWindow *window = META_WINDOW (wl_window);
++
++  meta_warning("Sending MWWConfig: %u %spos(%d, %d) %srel(%d, %d) %s %s (%d, %d), %d, %d, 0x%x, (%d, %d), %s\n",
++               configuration->serial,
++               configuration->has_position ? "" : "no-",
++               configuration->x,
++               configuration->y,
++               configuration->has_relative_position ? "" : "no-",
++               configuration->rel_x,
++               configuration->rel_y,
++               configuration->has_size ? "hasSize" : "noSize",
++               configuration->is_resizing ? "isResize" : "noResiz",
++               configuration->width,
++               configuration->height,
++               configuration->scale,
++               configuration->gravity,
++               configuration->flags,
++               configuration->bounds_width,
++               configuration->bounds_height,
++               configuration->is_fullscreen ? "fs" : "no-fs");
++
+   meta_wayland_surface_configure_notify (wl_window->surface, configuration);
+ 
+   wl_window->pending_configurations =
+@@ -425,6 +446,7 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+                                                    geometry_scale,
+                                                    flags,
+                                                    gravity);
++
+           meta_window_wayland_configure (wl_window, configuration);
+           can_move_now = FALSE;
+         }
+@@ -441,11 +463,13 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+ 
+   if (can_move_now)
+     {
++      meta_warning("using constrained pos\n");
+       new_x = constrained_rect.x;
+       new_y = constrained_rect.y;
+     }
+   else
+     {
++      meta_warning("using temp pos\n");
+       new_x = temporary_rect.x;
+       new_y = temporary_rect.y;
+ 
+@@ -456,6 +480,13 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+   if (new_x != window->rect.x || new_y != window->rect.y)
+     {
+       *result |= META_MOVE_RESIZE_RESULT_MOVED;
++      meta_warning("Window moving from {x: %d, y: %d, w: %d: h: %d} to {x: %d, y: %d}\n",
++                   window->rect.x,
++                   window->rect.y,
++                   window->rect.width,
++                   window->rect.height,
++                   new_x,
++                   new_y);
+       window->rect.x = new_x;
+       window->rect.y = new_y;
+     }
+@@ -1173,6 +1204,27 @@ meta_window_wayland_finish_move_resize (MetaWindow              *window,
+   else
+     geometry_scale = meta_window_wayland_get_geometry_scale (window);
+ 
++  if (acked_configuration) {
++    meta_warning("Received MWWConfig: %u %spos(%d, %d) %srel(%d, %d) %s %s (%d, %d), %d, %d, 0x%x, (%d, %d), %s\n",
++                 acked_configuration->serial,
++                 acked_configuration->has_position ? "" : "no-",
++                 acked_configuration->x,
++                 acked_configuration->y,
++                 acked_configuration->has_relative_position ? "" : "no-",
++                 acked_configuration->rel_x,
++                 acked_configuration->rel_y,
++                 acked_configuration->has_size ? "hasSize" : "noSize",
++                 acked_configuration->is_resizing ? "isResize" : "noResiz",
++                 acked_configuration->width,
++                 acked_configuration->height,
++                 acked_configuration->scale,
++                 acked_configuration->gravity,
++                 acked_configuration->flags,
++                 acked_configuration->bounds_width,
++                 acked_configuration->bounds_height,
++                 acked_configuration->is_fullscreen ? "fs" : "no-fs");
++  }
++
+   new_geom.x *= geometry_scale;
+   new_geom.y *= geometry_scale;
+   new_geom.width *= geometry_scale;
+-- 
+2.44.0
+
+
+From 8492a71617328d20fb4aa5d3ff29d95915b846e9 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sat, 13 May 2023 13:26:10 -0700
+Subject: [PATCH 8/8] adlr: try fix for slow-resize on left
+
+---
+ src/wayland/meta-window-wayland.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/wayland/meta-window-wayland.c b/src/wayland/meta-window-wayland.c
+index 7c2c55131..be5f1c244 100644
+--- a/src/wayland/meta-window-wayland.c
++++ b/src/wayland/meta-window-wayland.c
+@@ -419,6 +419,8 @@ meta_window_wayland_move_resize_internal (MetaWindow                *window,
+         }
+       else if (constrained_rect.width != pending_width ||
+                constrained_rect.height != pending_height ||
++               (flags & META_MOVE_RESIZE_USER_ACTION &&
++                flags & META_MOVE_RESIZE_RESIZE_ACTION) ||
+                flags & META_MOVE_RESIZE_STATE_CHANGED)
+         {
+           MetaWaylandWindowConfiguration *configuration;
+-- 
+2.44.0
+
