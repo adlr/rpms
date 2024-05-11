@@ -3,7 +3,8 @@
 set -x
 PKG="$1"  # package, e.g. 'mutter'
 REL="${2:-40}"  # Fedora version, e.g. '40'
-PATCH="${3:-$PKG-$REL.patch}"
+PATCH="$(readlink -f "${3:-$PKG-f$REL.patch}")"
+PATCH_BASENAME="$(basename "$PATCH")"
 ARCH="${ARCH:-x86_64}"
 
 F_VERSION="$(dnf -q --releasever="$REL" --disablerepo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched list --available "$PKG" --refresh | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
@@ -11,7 +12,7 @@ COPR_VERSION="$(dnf -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org
 
 if [ "$F_VERSION" = "$COPR_VERSION" ]; then
   echo "No new version"
-  exit 0
+  #exit 0
 fi
 echo "Making new package for $F_VERSION"
 
@@ -36,18 +37,18 @@ PATCH_SCRIPT="$(cat << EOF
 from specfile import Specfile
 specfile = Specfile('$PKG.spec')
 RELEASE=$RELEASE
-if specfile.release == '%autorelease':
-  specfile.release = f'{RELEASE}%{{?dist}}.adlr'
+if specfile.raw_release == '%autorelease':
+  specfile.raw_release = f'{RELEASE}%{{?dist}}.adlr'
 else:
-  specfile.release = specfile.release + '.adlr'
+  specfile.raw_release = specfile.raw_release + '.adlr'
 with specfile.patches() as patches:
-  patches.append('$PKG-f$REL.patch')
+  patches.append('$PATCH_BASENAME')
 specfile.save()
 EOF
 )"
 python -c "$PATCH_SCRIPT"
 
-cp ../../$PKG-f$REL.patch .
+cp "$PATCH" .
 
 # repackage
 rpmbuild -bs "$PKG".spec --define "_sourcedir $PWD" --define "_srcrpmdir $PWD/../pkg-new"
