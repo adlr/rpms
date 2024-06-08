@@ -12,11 +12,14 @@ COPR_VERSION="$(dnf -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org
 
 if [ "$F_VERSION" = "$COPR_VERSION" ]; then
   echo "No new version"
-  #exit 0
+  exit 0
 fi
 echo "Making new package for $F_VERSION"
 
 TMP="$(dirname "$0")/rebuild-work"
+if [ -d "$TMP" ]; then
+  rm -rf "$TMP"
+fi
 mkdir -p "$TMP"
 
 set -ex
