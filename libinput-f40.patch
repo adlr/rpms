@@ -1,50 +1,118 @@
-diff --git a/README.md b/README.md
-index e2333a62..166cb827 100644
---- a/README.md
-+++ b/README.md
-@@ -11,6 +11,20 @@ provide the common set of functionality that users expect. Input event
- processing includes scaling touch coordinates, generating
- relative pointer events from touchpads, pointer acceleration, etc.
+From e3d512c4cf1f64faae0da44feef109441d3dd4f0 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sun, 25 Jul 2021 11:42:58 -0700
+Subject: [PATCH 1/8] adlr: chromium os accel curve
+
+---
+ src/filter-touchpad.c | 57 +++++++++++++++++++++++++++++++++++--------
+ 1 file changed, 47 insertions(+), 10 deletions(-)
+
+diff --git a/src/filter-touchpad.c b/src/filter-touchpad.c
+index ec6731c3..69e5669f 100644
+--- a/src/filter-touchpad.c
++++ b/src/filter-touchpad.c
+@@ -56,6 +56,8 @@ struct touchpad_accelerator {
+ 	int dpi;
  
-+What is different in this fork?
-+-------------------------------
-+
-+This fork is my place to experiment with a few ideas. Specifically I'd like to
-+try out:
-+
-+* Touchpad acceleration curve(s) that closely resemble what I'm
-+accustomed to (ChromeOS and macOS)
-+* Kinetic scrolling (that's what Linux folks call it when you scroll to fling
-+some content and it keeps scrolling after you let go of the touchpad)
-+* Improving palm rejection, esp by leveraging knowlege of keyboard input. This
-+is already in the libevent codebase, but seems to have very tight timeouts and
-+not work properly with Gnome Shell.
-+
- User documentation
- ------------------
+ 	double speed_factor;    /* factor based on speed setting */
++	/* chrome os items */
++	uint64_t prev_time;
+ };
  
-diff --git a/build.sh b/build.sh
-new file mode 100755
-index 00000000..378aa8b9
---- /dev/null
-+++ b/build.sh
-@@ -0,0 +1,3 @@
-+#!/bin/bash
+ /**
+@@ -98,17 +100,49 @@ accelerator_filter_touchpad(struct motion_filter *filter,
+ 	struct touchpad_accelerator *accel =
+ 		(struct touchpad_accelerator *) filter;
+ 
++	/* start chromiums os version */
++	/* first, convert intput to mm/s */
++	struct normalized_coords kdpi = normalize_for_dpi(unaccelerated, accel->dpi);
++	double mm_x = kdpi.x * 25.4 / 1000;
++	double mm_y = kdpi.y * 25.4 / 1000;
++	double dt = (time - accel->prev_time) / 1000000.0;  // seconds
++	// Sanity check dt
++	/* printf("%zu - %zu / 1M = %f\n", time, accel->prev_time, dt); */
++	if (dt < 0.002 || dt > 0.02)
++		dt = 0.01;
++	accel->prev_time = time;
++	double velocity = sqrt((mm_x * mm_x + mm_y * mm_y) / (dt * dt));  // mm/s
++	// compute scale factor
++	double factor = 1.0;
++	if (velocity < 32) {
++		factor = 32.0 / 37.5;
++	} else if (velocity < 150) {
++		factor = velocity / 37.5;
++	} else {
++		factor = 300 / 37.5 + (150.0 * 150.0 - 300.0 * 150.0) / (37.5 * velocity);
++	}
++	double screen_dots_per_mm = 133.0 / 25.4;
++	struct normalized_coords cret;
++	cret.x = mm_x * factor * screen_dots_per_mm;
++	cret.y = mm_y * factor * screen_dots_per_mm;
++	/* printf("%f %f (dt %f) v %f f %f out %f %f\n", */
++	/*        mm_x, mm_y, dt, velocity, factor, cret.x, cret.y); */
++	return cret;
++	//double vx = mm_x
++	/* end chromium os version */
 +
-+ninja -C . && sudo systemctl stop gdm && sudo cp libinput.so.10.13.0 /usr/local/lib && sudo systemctl start gdm
-diff --git a/quirks/60-system-xiaomi-cros.quirks b/quirks/60-system-xiaomi-cros.quirks
-new file mode 100644
-index 00000000..11c96433
---- /dev/null
-+++ b/quirks/60-system-xiaomi-cros.quirks
-@@ -0,0 +1,5 @@
-+[Touchpad pressure override]
-+MatchName=ETD2303:00 04F3:3083 Touchpad
-+AttrPressureRange=6:4
-+AttrPalmPressureThreshold=150
-+AttrThumbPressureThreshold=40
++
+ 	/* Accelerate for device units, normalize afterwards */
+-	double accel_factor = calculate_acceleration_factor(accel,
+-							    unaccelerated,
+-							    data,
+-							    time);
+-	const struct device_float_coords accelerated =  {
+-		.x = unaccelerated->x * accel_factor,
+-		.y = unaccelerated->y * accel_factor,
+-	};
+-
+-	return normalize_for_dpi(&accelerated, accel->dpi);
++	/* double accel_factor = calculate_acceleration_factor(accel, */
++	/* 						    unaccelerated, */
++	/* 						    data, */
++	/* 						    time); */
++	/* const struct device_float_coords accelerated =  { */
++	/* 	.x = unaccelerated->x * accel_factor, */
++	/* 	.y = unaccelerated->y * accel_factor, */
++	/* }; */
++
++	/* return normalize_for_dpi(&accelerated, accel->dpi); */
+ }
+ 
+ /* Maps the [-1, 1] speed setting into a constant acceleration
+@@ -129,6 +163,7 @@ static bool
+ touchpad_accelerator_set_speed(struct motion_filter *filter,
+ 		      double speed_adjustment)
+ {
++	printf("SET SPEED: %f\n", speed_adjustment);
+ 	struct touchpad_accelerator *accel_filter =
+ 		(struct touchpad_accelerator *)filter;
+ 
+@@ -304,5 +339,7 @@ create_pointer_accelerator_filter_touchpad(int dpi,
+ 	filter->profile = touchpad_accel_profile_linear;
+ 	filter->trackers.smoothener = pointer_delta_smoothener_create(event_delta_smooth_threshold, event_delta_smooth_value);
+ 
++	filter->prev_time = 0;
++
+ 	return &filter->base;
+ }
+-- 
+2.45.2
+
+
+From 073d7a8e1af923127173369d9ac6f3422885bfed Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sun, 25 Jul 2021 15:24:36 -0700
+Subject: [PATCH 2/8] kinetic scrolling hack
+
+---
+ src/evdev-mt-touchpad-gestures.c | 162 ++++++++++++++++++++++++++++++-
+ src/evdev-mt-touchpad.h          |  10 ++
+ src/filter-touchpad.c            |  34 +++++--
+ 3 files changed, 197 insertions(+), 9 deletions(-)
+
 diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
-index ad11c262..87566e63 100644
+index e92b9f4a..75efef6e 100644
 --- a/src/evdev-mt-touchpad-gestures.c
 +++ b/src/evdev-mt-touchpad-gestures.c
 @@ -133,6 +133,16 @@ tp_gesture_init_scroll(struct tp_dispatch *tp)
@@ -64,15 +132,7 @@ index ad11c262..87566e63 100644
  }
  
  static inline struct device_float_coords
-@@ -233,6 +243,7 @@ tp_gesture_post_pointer_motion(struct tp_dispatch *tp, uint64_t time)
- 		struct device_float_coords unaccel;
- 
- 		unaccel = tp_scale_to_xaxis(tp, raw);
-+		tp_notify_motion(tp, delta, time);
- 		pointer_notify_motion(&tp->device->base,
- 				      time,
- 				      &delta,
-@@ -860,6 +871,38 @@ tp_gesture_tap_timeout(struct tp_dispatch *tp, uint64_t time)
+@@ -860,6 +870,38 @@ tp_gesture_tap_timeout(struct tp_dispatch *tp, uint64_t time)
  		tp_gesture_handle_event(tp, GESTURE_EVENT_HOLD_TIMEOUT, time);
  }
  
@@ -111,7 +171,7 @@ index ad11c262..87566e63 100644
  static void
  tp_gesture_detect_motion_gestures(struct tp_dispatch *tp, uint64_t time)
  {
-@@ -1064,6 +1107,19 @@ tp_gesture_handle_state_none(struct tp_dispatch *tp, uint64_t time)
+@@ -1064,6 +1106,19 @@ tp_gesture_handle_state_none(struct tp_dispatch *tp, uint64_t time)
  	if (ntouches == 0)
  		return;
  
@@ -131,7 +191,7 @@ index ad11c262..87566e63 100644
  	if (ntouches == 1) {
  		first->gesture.initial = first->point;
  		tp->gesture.touches[0] = first;
-@@ -1182,8 +1238,25 @@ tp_gesture_handle_state_scroll(struct tp_dispatch *tp, uint64_t time)
+@@ -1180,8 +1235,25 @@ tp_gesture_handle_state_scroll(struct tp_dispatch *tp, uint64_t time)
  	if (normalized_is_zero(delta))
  		return;
  
@@ -157,7 +217,7 @@ index ad11c262..87566e63 100644
  	evdev_post_scroll(tp->device,
  			  time,
  			  LIBINPUT_POINTER_AXIS_SOURCE_FINGER,
-@@ -1333,15 +1406,91 @@ tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time,
+@@ -1331,15 +1403,90 @@ tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time,
  		tp_gesture_post_gesture(tp, time, ignore_motion);
  }
  
@@ -244,7 +304,6 @@ index ad11c262..87566e63 100644
 +	/* } else { */
 +		tp->scroll.fling_scroll.dx = 0;
 +		tp->scroll.fling_scroll.dy = 0;
-+		tp->scroll.fling_scroll.dt = 0;
 +		evdev_stop_scroll(tp->device,
 +				  time,
 +				  LIBINPUT_POINTER_AXIS_SOURCE_FINGER);
@@ -252,7 +311,7 @@ index ad11c262..87566e63 100644
  }
  
  static void
-@@ -1539,6 +1688,15 @@ tp_init_gesture(struct tp_dispatch *tp)
+@@ -1537,6 +1684,15 @@ tp_init_gesture(struct tp_dispatch *tp)
  			    tp_libinput_context(tp),
  			    timer_name,
  			    tp_gesture_hold_timeout, tp);
@@ -268,89 +327,8 @@ index ad11c262..87566e63 100644
  }
  
  void
-diff --git a/src/evdev-mt-touchpad.c b/src/evdev-mt-touchpad.c
-index b29a5c56..0f55ea15 100644
---- a/src/evdev-mt-touchpad.c
-+++ b/src/evdev-mt-touchpad.c
-@@ -471,7 +471,7 @@ tp_stop_actions(struct tp_dispatch *tp, uint64_t time)
- {
- 	tp_edge_scroll_stop_events(tp, time);
- 	tp_gesture_cancel(tp, time);
--	tp_tap_suspend(tp, time);
-+	/* tp_tap_suspend(tp, time); */
- }
- 
- struct device_coords
-@@ -1911,6 +1911,20 @@ tp_handle_state(struct tp_dispatch *tp,
- 	tp_apply_rotation(tp->device);
- }
- 
-+void
-+tp_notify_motion(struct tp_dispatch *tp, struct normalized_coords delta,
-+		 uint64_t time)
-+{
-+	if (tp->tap.suspended) {
-+		tp->tap.delta_since_suspend.x += delta.x;
-+		tp->tap.delta_since_suspend.y += delta.y;
-+		if (abs(tp->tap.delta_since_suspend.x) < 4 &&
-+		    abs(tp->tap.delta_since_suspend.y) < 5)
-+			return;
-+		tp_tap_resume(tp, time);
-+	}
-+}
-+
- LIBINPUT_UNUSED
- static inline void
- tp_debug_touch_state(struct tp_dispatch *tp,
-@@ -2186,7 +2200,7 @@ tp_trackpoint_timeout(uint64_t now, void *data)
- 	struct tp_dispatch *tp = data;
- 
- 	if (tp->palm.trackpoint_active) {
--		tp_tap_resume(tp, now);
-+		/* tp_tap_resume(tp, now); */
- 		tp->palm.trackpoint_active = false;
- 	}
- 	tp->palm.trackpoint_event_count = 0;
-@@ -2239,7 +2253,7 @@ tp_keyboard_timeout(uint64_t now, void *data)
- 		return;
- 	}
- 
--	tp_tap_resume(tp, now);
-+	/* tp_tap_resume(tp, now); */
- 
- 	tp->dwt.keyboard_active = false;
- 
-@@ -2321,6 +2335,17 @@ tp_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
- 	 * ctrl+zoom or ctrl+click are possible */
- 	is_modifier = tp_key_is_modifier(key);
- 	if (is_modifier) {
-+		/* Stop fling scroll when modifier pressed */
-+		if (tp->scroll.fling_scroll.dt) {
-+			tp->scroll.fling_scroll.dx = 0;
-+			tp->scroll.fling_scroll.dy = 0;
-+			tp->scroll.fling_scroll.dt = 0;
-+			/* printf("fling petered out\n"); */
-+			evdev_stop_scroll(tp->device,
-+					  time,
-+					  LIBINPUT_POINTER_AXIS_SOURCE_FINGER);
-+		}
-+
- 		long_set_bit(tp->dwt.mod_mask, key);
- 		return;
- 	}
-@@ -2336,6 +2361,10 @@ tp_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
- 		    return;
- 
- 		tp_stop_actions(tp, time);
-+		if (!tp->tap.suspended)
-+			tp_tap_suspend(tp, time);
-+		tp->tap.delta_since_suspend.x = 0;
-+		tp->tap.delta_since_suspend.y = 0;
- 		tp->dwt.keyboard_active = true;
- 		timeout = DEFAULT_KEYBOARD_ACTIVITY_TIMEOUT_1;
- 	} else {
 diff --git a/src/evdev-mt-touchpad.h b/src/evdev-mt-touchpad.h
-index bd5eab5f..faefa015 100644
+index 26588dbb..cbd15bf5 100644
 --- a/src/evdev-mt-touchpad.h
 +++ b/src/evdev-mt-touchpad.h
 @@ -282,6 +282,11 @@ enum suspend_trigger {
@@ -365,7 +343,7 @@ index bd5eab5f..faefa015 100644
  struct tp_dispatch {
  	struct evdev_dispatch base;
  	struct evdev_device *device;
-@@ -414,6 +419,11 @@ struct tp_dispatch {
+@@ -417,6 +422,11 @@ struct tp_dispatch {
  		struct {
  			uint64_t h, v;
  		} duration;
@@ -377,84 +355,20 @@ index bd5eab5f..faefa015 100644
  	} scroll;
  
  	enum touchpad_event queued;
-@@ -435,6 +445,7 @@ struct tp_dispatch {
- 		bool drag_lock_enabled;
- 
- 		unsigned int nfingers_down;	/* number of fingers down for tapping (excl. thumb/palm) */
-+		struct normalized_coords delta_since_suspend;
- 	} tap;
- 
- 	struct {
-@@ -767,4 +778,8 @@ tp_init_thumb(struct tp_dispatch *tp);
- struct tp_touch*
- tp_thumb_get_touch(struct tp_dispatch *tp);
- 
-+void
-+tp_notify_motion(struct tp_dispatch *tp, struct normalized_coords delta,
-+		 uint64_t time);
-+
- #endif
 diff --git a/src/filter-touchpad.c b/src/filter-touchpad.c
-index ec6731c3..16d12b3c 100644
+index 69e5669f..4a1eeb3a 100644
 --- a/src/filter-touchpad.c
 +++ b/src/filter-touchpad.c
-@@ -56,6 +56,8 @@ struct touchpad_accelerator {
- 	int dpi;
- 
- 	double speed_factor;    /* factor based on speed setting */
-+	/* chrome os items */
-+	uint64_t prev_time;
- };
- 
- /**
-@@ -98,6 +100,38 @@ accelerator_filter_touchpad(struct motion_filter *filter,
- 	struct touchpad_accelerator *accel =
- 		(struct touchpad_accelerator *) filter;
- 
-+	/* start chromiums os version */
-+	/* first, convert intput to mm/s */
-+	struct normalized_coords kdpi = normalize_for_dpi(unaccelerated, accel->dpi);
-+	double mm_x = kdpi.x * 25.4 / 1000;
-+	double mm_y = kdpi.y * 25.4 / 1000;
-+	double dt = (time - accel->prev_time) / 1000000.0;  // seconds
-+	// Sanity check dt
-+	/* printf("%zu - %zu / 1M = %f\n", time, accel->prev_time, dt); */
-+	if (dt < 0.002 || dt > 0.02)
-+		dt = 0.01;
-+	accel->prev_time = time;
-+	double velocity = sqrt((mm_x * mm_x + mm_y * mm_y) / (dt * dt));  // mm/s
-+	// compute scale factor
-+	double factor = 1.0;
-+	if (velocity < 32) {
-+		factor = 32.0 / 37.5;
-+	} else if (velocity < 150) {
-+		factor = velocity / 37.5;
-+	} else {
-+		factor = 300 / 37.5 + (150.0 * 150.0 - 300.0 * 150.0) / (37.5 * velocity);
-+	}
+@@ -121,7 +121,7 @@ accelerator_filter_touchpad(struct motion_filter *filter,
+ 	} else {
+ 		factor = 300 / 37.5 + (150.0 * 150.0 - 300.0 * 150.0) / (37.5 * velocity);
+ 	}
+-	double screen_dots_per_mm = 133.0 / 25.4;
 +	double screen_dots_per_mm = 1.25 * 133.0 / 25.4;
-+	struct normalized_coords cret;
-+	cret.x = mm_x * factor * screen_dots_per_mm;
-+	cret.y = mm_y * factor * screen_dots_per_mm;
-+	/* printf("%f %f (dt %f) v %f f %f out %f %f\n", */
-+	/*        mm_x, mm_y, dt, velocity, factor, cret.x, cret.y); */
-+	return cret;
-+	//double vx = mm_x
-+	/* end chromium os version */
-+
-+
- 	/* Accelerate for device units, normalize afterwards */
- 	double accel_factor = calculate_acceleration_factor(accel,
- 							    unaccelerated,
-@@ -129,6 +163,7 @@ static bool
- touchpad_accelerator_set_speed(struct motion_filter *filter,
- 		      double speed_adjustment)
- {
-+	printf("SET SPEED: %f\n", speed_adjustment);
- 	struct touchpad_accelerator *accel_filter =
- 		(struct touchpad_accelerator *)filter;
- 
-@@ -140,6 +175,8 @@ touchpad_accelerator_set_speed(struct motion_filter *filter,
+ 	struct normalized_coords cret;
+ 	cret.x = mm_x * factor * screen_dots_per_mm;
+ 	cret.y = mm_y * factor * screen_dots_per_mm;
+@@ -175,6 +175,8 @@ touchpad_accelerator_set_speed(struct motion_filter *filter,
  	return true;
  }
  
@@ -463,7 +377,7 @@ index ec6731c3..16d12b3c 100644
  static struct normalized_coords
  touchpad_constant_filter(struct motion_filter *filter,
  			 const struct device_float_coords *unaccelerated,
-@@ -148,6 +185,26 @@ touchpad_constant_filter(struct motion_filter *filter,
+@@ -183,6 +185,26 @@ touchpad_constant_filter(struct motion_filter *filter,
  	struct touchpad_accelerator *accel =
  		(struct touchpad_accelerator *)filter;
  	struct normalized_coords normalized;
@@ -490,7 +404,7 @@ index ec6731c3..16d12b3c 100644
  	/* We need to use the same baseline here as the accelerated code,
  	 * otherwise our unaccelerated speed is different to the accelerated
  	 * speed on the plateau.
-@@ -156,13 +213,13 @@ touchpad_constant_filter(struct motion_filter *filter,
+@@ -191,13 +213,13 @@ touchpad_constant_filter(struct motion_filter *filter,
  	 * TP_MAGIC_SLOWDOWN so we only have one number here but meanwhile
  	 * this will do.
  	 */
@@ -509,19 +423,174 @@ index ec6731c3..16d12b3c 100644
  }
  
  static void
-@@ -304,5 +361,7 @@ create_pointer_accelerator_filter_touchpad(int dpi,
- 	filter->profile = touchpad_accel_profile_linear;
- 	filter->trackers.smoothener = pointer_delta_smoothener_create(event_delta_smooth_threshold, event_delta_smooth_value);
+-- 
+2.45.2
+
+
+From 2508fcd7bccebbe013d4724a7a70e94d1cf01971 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sun, 25 Jul 2021 17:41:19 -0700
+Subject: [PATCH 3/8] hack to be more aggressive about tap suspending
+
+Seems to work in the gui, but not real life. needs debugging
+---
+ src/evdev-mt-touchpad-gestures.c |  1 +
+ src/evdev-mt-touchpad.c          | 24 +++++++++++++++++++++---
+ src/evdev-mt-touchpad.h          |  5 +++++
+ 3 files changed, 27 insertions(+), 3 deletions(-)
+
+diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
+index 75efef6e..53f2e4d3 100644
+--- a/src/evdev-mt-touchpad-gestures.c
++++ b/src/evdev-mt-touchpad-gestures.c
+@@ -243,6 +243,7 @@ tp_gesture_post_pointer_motion(struct tp_dispatch *tp, uint64_t time)
+ 		struct device_float_coords unaccel;
  
-+	filter->prev_time = 0;
-+
- 	return &filter->base;
+ 		unaccel = tp_scale_to_xaxis(tp, raw);
++		tp_notify_motion(tp, delta, time);
+ 		pointer_notify_motion(&tp->device->base,
+ 				      time,
+ 				      &delta,
+diff --git a/src/evdev-mt-touchpad.c b/src/evdev-mt-touchpad.c
+index 9bc6bf6a..f6cd8c2d 100644
+--- a/src/evdev-mt-touchpad.c
++++ b/src/evdev-mt-touchpad.c
+@@ -472,7 +472,7 @@ tp_stop_actions(struct tp_dispatch *tp, uint64_t time)
+ {
+ 	tp_edge_scroll_stop_events(tp, time);
+ 	tp_gesture_cancel(tp, time);
+-	tp_tap_suspend(tp, time);
++	/* tp_tap_suspend(tp, time); */
  }
+ 
+ struct device_coords
+@@ -1913,6 +1913,20 @@ tp_handle_state(struct tp_dispatch *tp,
+ 	tp_apply_rotation(tp->device);
+ }
+ 
++void
++tp_notify_motion(struct tp_dispatch *tp, struct normalized_coords delta,
++		 uint64_t time)
++{
++	if (tp->tap.suspended) {
++		tp->tap.delta_since_suspend.x += delta.x;
++		tp->tap.delta_since_suspend.y += delta.y;
++		if (abs(tp->tap.delta_since_suspend.x) < 4 &&
++		    abs(tp->tap.delta_since_suspend.y) < 5)
++			return;
++		tp_tap_resume(tp, time);
++	}
++}
++
+ LIBINPUT_UNUSED
+ static inline void
+ tp_debug_touch_state(struct tp_dispatch *tp,
+@@ -2188,7 +2202,7 @@ tp_trackpoint_timeout(uint64_t now, void *data)
+ 	struct tp_dispatch *tp = data;
+ 
+ 	if (tp->palm.trackpoint_active) {
+-		tp_tap_resume(tp, now);
++		/* tp_tap_resume(tp, now); */
+ 		tp->palm.trackpoint_active = false;
+ 	}
+ 	tp->palm.trackpoint_event_count = 0;
+@@ -2241,7 +2255,7 @@ tp_keyboard_timeout(uint64_t now, void *data)
+ 		return;
+ 	}
+ 
+-	tp_tap_resume(tp, now);
++	/* tp_tap_resume(tp, now); */
+ 
+ 	tp->dwt.keyboard_active = false;
+ 
+@@ -2348,6 +2362,10 @@ tp_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
+ 		    return;
+ 
+ 		tp_stop_actions(tp, time);
++		if (!tp->tap.suspended)
++			tp_tap_suspend(tp, time);
++		tp->tap.delta_since_suspend.x = 0;
++		tp->tap.delta_since_suspend.y = 0;
+ 		tp->dwt.keyboard_active = true;
+ 		timeout = DEFAULT_KEYBOARD_ACTIVITY_TIMEOUT_1;
+ 	} else {
+diff --git a/src/evdev-mt-touchpad.h b/src/evdev-mt-touchpad.h
+index cbd15bf5..d2e92f5f 100644
+--- a/src/evdev-mt-touchpad.h
++++ b/src/evdev-mt-touchpad.h
+@@ -448,6 +448,7 @@ struct tp_dispatch {
+ 		bool drag_lock_enabled;
+ 
+ 		unsigned int nfingers_down;	/* number of fingers down for tapping (excl. thumb/palm) */
++		struct normalized_coords delta_since_suspend;
+ 	} tap;
+ 
+ 	struct {
+@@ -783,4 +784,8 @@ tp_init_thumb(struct tp_dispatch *tp);
+ struct tp_touch*
+ tp_thumb_get_touch(struct tp_dispatch *tp);
+ 
++void
++tp_notify_motion(struct tp_dispatch *tp, struct normalized_coords delta,
++		 uint64_t time);
++
+ #endif
+-- 
+2.45.2
+
+
+From be2e813fd1b3a817c4ddbeaeecfdf420f5d856d7 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sun, 25 Jul 2021 18:10:29 -0700
+Subject: [PATCH 4/8] readme update
+
+---
+ README.md | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/README.md b/README.md
+index e2333a62..166cb827 100644
+--- a/README.md
++++ b/README.md
+@@ -11,6 +11,20 @@ provide the common set of functionality that users expect. Input event
+ processing includes scaling touch coordinates, generating
+ relative pointer events from touchpads, pointer acceleration, etc.
+ 
++What is different in this fork?
++-------------------------------
++
++This fork is my place to experiment with a few ideas. Specifically I'd like to
++try out:
++
++* Touchpad acceleration curve(s) that closely resemble what I'm
++accustomed to (ChromeOS and macOS)
++* Kinetic scrolling (that's what Linux folks call it when you scroll to fling
++some content and it keeps scrolling after you let go of the touchpad)
++* Improving palm rejection, esp by leveraging knowlege of keyboard input. This
++is already in the libevent codebase, but seems to have very tight timeouts and
++not work properly with Gnome Shell.
++
+ User documentation
+ ------------------
+ 
+-- 
+2.45.2
+
+
+From ec420fe2d9dec764ac5fee8ae6261b3cb9f84f74 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sat, 31 Jul 2021 09:13:53 -0700
+Subject: [PATCH 5/8] hack to parse quirks files more leniently
+
+---
+ src/quirks.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
 diff --git a/src/quirks.c b/src/quirks.c
-index 7e916009..a1e6d9ac 100644
+index 01065d5e..8346e312 100644
 --- a/src/quirks.c
 +++ b/src/quirks.c
-@@ -1108,8 +1108,12 @@ parse_files(struct quirks_context *ctx, const char *data_path)
+@@ -1116,8 +1116,12 @@ parse_files(struct quirks_context *ctx, const char *data_path)
  			 data_path,
  			 namelist[idx]->d_name);
  
@@ -535,3 +604,103 @@ index 7e916009..a1e6d9ac 100644
  	}
  
  	for (int i = 0; i < ndev; i++)
+-- 
+2.45.2
+
+
+From 27a1020debd27fe9cbc7953638eeff5c0691b57f Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sat, 7 Aug 2021 10:40:19 -0700
+Subject: [PATCH 6/8] fling: stop when modifier pressed
+
+---
+ src/evdev-mt-touchpad-gestures.c |  1 +
+ src/evdev-mt-touchpad.c          | 11 +++++++++++
+ 2 files changed, 12 insertions(+)
+
+diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
+index 53f2e4d3..fe70dd85 100644
+--- a/src/evdev-mt-touchpad-gestures.c
++++ b/src/evdev-mt-touchpad-gestures.c
+@@ -1484,6 +1484,7 @@ tp_gesture_stop_twofinger_scroll(struct tp_dispatch *tp, uint64_t time)
+ 	/* } else { */
+ 		tp->scroll.fling_scroll.dx = 0;
+ 		tp->scroll.fling_scroll.dy = 0;
++		tp->scroll.fling_scroll.dt = 0;
+ 		evdev_stop_scroll(tp->device,
+ 				  time,
+ 				  LIBINPUT_POINTER_AXIS_SOURCE_FINGER);
+diff --git a/src/evdev-mt-touchpad.c b/src/evdev-mt-touchpad.c
+index f6cd8c2d..bf02799e 100644
+--- a/src/evdev-mt-touchpad.c
++++ b/src/evdev-mt-touchpad.c
+@@ -2348,6 +2348,17 @@ tp_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
+ 	if (is_modifier) {
+ 		if (!tp_key_is_shift(key))
+ 			long_set_bit(tp->dwt.mod_mask, key);
++
++		/* Stop fling scroll when modifier pressed */
++		if (tp->scroll.fling_scroll.dt) {
++			tp->scroll.fling_scroll.dx = 0;
++			tp->scroll.fling_scroll.dy = 0;
++			tp->scroll.fling_scroll.dt = 0;
++			/* printf("fling petered out\n"); */
++			evdev_stop_scroll(tp->device,
++					  time,
++					  LIBINPUT_POINTER_AXIS_SOURCE_FINGER);
++		}
+ 		return;
+ 	}
+ 
+-- 
+2.45.2
+
+
+From fa0774561c0b66aa6ee10c3db3f59aecf2a66513 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@chromium.org>
+Date: Sat, 7 Aug 2021 10:42:44 -0700
+Subject: [PATCH 7/8] build.sh: Convenience script to build/install
+
+---
+ build.sh | 3 +++
+ 1 file changed, 3 insertions(+)
+ create mode 100755 build.sh
+
+diff --git a/build.sh b/build.sh
+new file mode 100755
+index 00000000..378aa8b9
+--- /dev/null
++++ b/build.sh
+@@ -0,0 +1,3 @@
++#!/bin/bash
++
++ninja -C . && sudo systemctl stop gdm && sudo cp libinput.so.10.13.0 /usr/local/lib && sudo systemctl start gdm
+-- 
+2.45.2
+
+
+From e19d3274e6df910e79d11f10e7d3936b5793faec Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sun, 10 Apr 2022 13:13:30 -0700
+Subject: [PATCH 8/8] Defaults for Xiaomi Mi Pro with modified touchpad
+ firmware
+
+---
+ quirks/60-system-xiaomi-cros.quirks | 5 +++++
+ 1 file changed, 5 insertions(+)
+ create mode 100644 quirks/60-system-xiaomi-cros.quirks
+
+diff --git a/quirks/60-system-xiaomi-cros.quirks b/quirks/60-system-xiaomi-cros.quirks
+new file mode 100644
+index 00000000..11c96433
+--- /dev/null
++++ b/quirks/60-system-xiaomi-cros.quirks
+@@ -0,0 +1,5 @@
++[Touchpad pressure override]
++MatchName=ETD2303:00 04F3:3083 Touchpad
++AttrPressureRange=6:4
++AttrPalmPressureThreshold=150
++AttrThumbPressureThreshold=40
+-- 
+2.45.2
+
