@@ -1,4 +1,4 @@
-From efcf7e38d676279e4183c4384649a890c6680811 Mon Sep 17 00:00:00 2001
+From 1bbde4d0409447d877a39a2868e8cda1875e1e1a Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:23:46 -0700
 Subject: [PATCH 1/4] ClutterEvent: Allow setting scroll delta on event
@@ -57,10 +57,10 @@ index 62f244c05..af097052b 100644
                                                                   gdouble                *dx,
                                                                   gdouble                *dy);
 -- 
-2.45.2
+2.47.0
 
 
-From 3ab70bddb21f482d997b3eec775faf64d6f66162 Mon Sep 17 00:00:00 2001
+From 60de9159e7f386672efeae02f8e54c49ba92dcf4 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:40:11 -0700
 Subject: [PATCH 2/4] ClutterEvent: Allow setting finish flags
@@ -106,24 +106,24 @@ index af097052b..6672904d4 100644
  ClutterScrollFinishFlags clutter_event_get_scroll_finish_flags       (const ClutterEvent     *event);
  
 -- 
-2.45.2
+2.47.0
 
 
-From e4e3dae1a21a5f657b810cec89e14f0acdc46518 Mon Sep 17 00:00:00 2001
+From 860de49e5ef7c7f131f725e30faa6f12293f0f59 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 26 Feb 2023 19:52:49 -0800
 Subject: [PATCH 3/4] adlr: hacks to slow down Chrome scroll speed and honor
  scroll stops
 
 ---
- src/core/events.c | 28 ++++++++++++++++++++++++++++
- 1 file changed, 28 insertions(+)
+ src/core/events.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
 
 diff --git a/src/core/events.c b/src/core/events.c
-index 1f36d2feb..35d6ae908 100644
+index 1f36d2feb..0d7d45dbb 100644
 --- a/src/core/events.c
 +++ b/src/core/events.c
-@@ -357,6 +357,34 @@ meta_display_handle_event (MetaDisplay        *display,
+@@ -357,6 +357,36 @@ meta_display_handle_event (MetaDisplay        *display,
      }
  
    window = get_window_for_event (display, event, event_actor);
@@ -133,7 +133,9 @@ index 1f36d2feb..35d6ae908 100644
 +    gdouble dx, dy;
 +    clutter_event_get_scroll_delta(event, &dx, &dy);
 +    const char* prefix = "google-chrome";
-+    if (text && !strncmp(text, prefix, strlen(prefix))) {
++    const char* prefix2 = "chrome-";
++    if (text && (!strncmp(text, prefix, strlen(prefix)) ||
++                 !strncmp(text, prefix2, strlen(prefix2)))) {
 +      dx *= (0.6 * 53.0/120.0);
 +      dy *= (0.6 * 53.0/120.0);
 +
@@ -159,10 +161,10 @@ index 1f36d2feb..35d6ae908 100644
    if (window && !window->override_redirect &&
        (event_type == CLUTTER_KEY_PRESS ||
 -- 
-2.45.2
+2.47.0
 
 
-From d57de4f007fbc391ad816ec9e7e18a7ad6578703 Mon Sep 17 00:00:00 2001
+From f8bb64e24b291b9d9793822043c81821fb1ef9a2 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 19 Feb 2023 09:14:26 -0800
 Subject: [PATCH 4/4] adlr: hide mouse cursor when typing
@@ -209,5 +211,5 @@ index ba442b9a8..96d46de8e 100644
      case CLUTTER_EXTENSION_DEVICE:
      case CLUTTER_JOYSTICK_DEVICE:
 -- 
-2.45.2
+2.47.0
 
