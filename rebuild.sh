@@ -1,18 +1,36 @@
 #!/bin/bash
 
 set -x
+REBUILD=no
+
+if [ "$1" = "-r" ]; then
+  REBUILD=yes
+  shift
+fi
+
 PKG="$1"  # package, e.g. 'mutter'
 REL="${2:-40}"  # Fedora version, e.g. '40'
 PATCH="$(readlink -f "${3:-$PKG-f$REL.patch}")"
 PATCH_BASENAME="$(basename "$PATCH")"
 ARCH="${ARCH:-x86_64}"
 
-F_VERSION="$(dnf -q --releasever="$REL" --disablerepo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched list --available "$PKG" --refresh | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
-COPR_VERSION="$(dnf -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched list --available "$PKG" --refresh | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+REFRESH="--refresh"
+
+F_VERSION="$(dnf -q --releasever="$REL" --repo updates --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+REPO="updates"
+if [ -z "$F_VERSION" ]; then
+  F_VERSION="$(dnf -q --releasever="$REL" --repo fedora --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+  REPO="fedora"
+fi
+COPR_VERSION="$(dnf -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
 
 if [ "$F_VERSION" = "$COPR_VERSION" ]; then
   echo "No new version"
-  exit 0
+  if [ "$REBUILD" = "no" ]; then
+    exit 0
+  else
+    echo "Rebuilding"
+  fi
 fi
 echo "Making new package for $F_VERSION"
 
@@ -26,7 +44,7 @@ set -ex
 cd "$TMP"
 
 # Fetch upstream srpm
-dnf download --source "$PKG" --disableexcludes=all --releasever="$REL"
+dnf download --repo "$REPO" --source "$PKG" --disableexcludes=all --releasever="$REL"
 
 mkdir pkg
 mkdir pkg-new
@@ -53,14 +71,18 @@ python -c "$PATCH_SCRIPT"
 
 cp "$PATCH" .
 
-# repackage
-rpmbuild -bs "$PKG".spec --define "_sourcedir $PWD" --define "_srcrpmdir $PWD/../pkg-new"
-
+LOCALBUILD=no
+if [ "$LOCALBUILD" = "yes" ]; then
+  rpmbuild -ba "$PKG".spec --define "_sourcedir $PWD" --define "_srcrpmdir $PWD/../pkg-new"
+fi
+  # Just repackage
+  rpmbuild -bs "$PKG".spec --define "_sourcedir $PWD" --define "_srcrpmdir $PWD/../pkg-new"
 cd ..
 
-# push to copr
-copr-cli build andrewdelosreyes/gnome-patched pkg-new/*.src.rpm
-
+if [ "$LOCALBUILD" = "no" ]; then
+  # push to copr
+  copr-cli build andrewdelosreyes/gnome-patched pkg-new/*.src.rpm
+fi
 
 ############ update available
 #Last metadata expiration check: 0:37:52 ago on Fri 26 Apr 2024 06:36:49 PM PDT.
