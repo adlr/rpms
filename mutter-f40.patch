@@ -164,7 +164,7 @@ index 1f36d2feb..0d7d45dbb 100644
 2.47.0
 
 
-From f8bb64e24b291b9d9793822043c81821fb1ef9a2 Mon Sep 17 00:00:00 2001
+From 6c5f68cdcfbf64a0331abbb8409321b5f5390546 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 19 Feb 2023 09:14:26 -0800
 Subject: [PATCH 4/4] adlr: hide mouse cursor when typing
@@ -178,11 +178,11 @@ by making a bigger diff, but I never got it to work when going in/out
 of overview mode, and a bigger diff is a risk when carrying this
 downstream.
 ---
- src/backends/meta-backend.c | 11 +++++++++++
- 1 file changed, 11 insertions(+)
+ src/backends/meta-backend.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
 
 diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
-index ba442b9a8..96d46de8e 100644
+index ba442b9a8..b9cfe23c2 100644
 --- a/src/backends/meta-backend.c
 +++ b/src/backends/meta-backend.c
 @@ -50,6 +50,7 @@
@@ -193,7 +193,26 @@ index ba442b9a8..96d46de8e 100644
  #include <stdlib.h>
  
  #include "backends/meta-barrier-private.h"
-@@ -1113,6 +1114,16 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+@@ -1084,6 +1085,7 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+   ClutterInputDevice *device;
+   ClutterInputDeviceType device_type;
+   uint32_t time_ms;
++  ClutterEventType event_type;
+ 
+   g_warn_if_fail (!priv->in_init);
+ 
+@@ -1102,7 +1104,9 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+     case CLUTTER_POINTER_DEVICE:
+     case CLUTTER_TOUCHPAD_DEVICE:
+       priv->last_pointer_motion = time_ms;
+-      meta_cursor_tracker_set_pointer_visible (cursor_tracker, TRUE);
++      event_type = clutter_event_type (event);
++      if (event_type != CLUTTER_KEY_PRESS && event_type != CLUTTER_KEY_RELEASE)
++        meta_cursor_tracker_set_pointer_visible (cursor_tracker, TRUE);
+       break;
+     case CLUTTER_TABLET_DEVICE:
+     case CLUTTER_PEN_DEVICE:
+@@ -1113,6 +1117,16 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
          meta_cursor_tracker_set_pointer_visible (cursor_tracker, FALSE);
        break;
      case CLUTTER_KEYBOARD_DEVICE:
