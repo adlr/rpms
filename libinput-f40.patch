@@ -1,7 +1,7 @@
-From e3d512c4cf1f64faae0da44feef109441d3dd4f0 Mon Sep 17 00:00:00 2001
+From 32c8c17c2e76ecc9f48f40e96780724c320c0ed0 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 11:42:58 -0700
-Subject: [PATCH 1/8] adlr: chromium os accel curve
+Subject: [PATCH 1/9] adlr: chromium os accel curve
 
 ---
  src/filter-touchpad.c | 57 +++++++++++++++++++++++++++++++++++--------
@@ -97,13 +97,13 @@ index ec6731c3..69e5669f 100644
  	return &filter->base;
  }
 -- 
-2.45.2
+2.47.0
 
 
-From 073d7a8e1af923127173369d9ac6f3422885bfed Mon Sep 17 00:00:00 2001
+From d7e8f5758737ad81e8c5140494ac696b0cf749fe Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 15:24:36 -0700
-Subject: [PATCH 2/8] kinetic scrolling hack
+Subject: [PATCH 2/9] kinetic scrolling hack
 
 ---
  src/evdev-mt-touchpad-gestures.c | 162 ++++++++++++++++++++++++++++++-
@@ -424,13 +424,13 @@ index 69e5669f..4a1eeb3a 100644
  
  static void
 -- 
-2.45.2
+2.47.0
 
 
-From 2508fcd7bccebbe013d4724a7a70e94d1cf01971 Mon Sep 17 00:00:00 2001
+From 504818fde08af71eefc906fda79600d3d016a594 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 17:41:19 -0700
-Subject: [PATCH 3/8] hack to be more aggressive about tap suspending
+Subject: [PATCH 3/9] hack to be more aggressive about tap suspending
 
 Seems to work in the gui, but not real life. needs debugging
 ---
@@ -536,13 +536,13 @@ index cbd15bf5..d2e92f5f 100644
 +
  #endif
 -- 
-2.45.2
+2.47.0
 
 
-From be2e813fd1b3a817c4ddbeaeecfdf420f5d856d7 Mon Sep 17 00:00:00 2001
+From 79be84024c40a2a79057a4653c81672b1b6c8b72 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 18:10:29 -0700
-Subject: [PATCH 4/8] readme update
+Subject: [PATCH 4/9] readme update
 
 ---
  README.md | 14 ++++++++++++++
@@ -574,13 +574,13 @@ index e2333a62..166cb827 100644
  ------------------
  
 -- 
-2.45.2
+2.47.0
 
 
-From ec420fe2d9dec764ac5fee8ae6261b3cb9f84f74 Mon Sep 17 00:00:00 2001
+From c589d2709493e1fd000a3856097a68ca166440f2 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 31 Jul 2021 09:13:53 -0700
-Subject: [PATCH 5/8] hack to parse quirks files more leniently
+Subject: [PATCH 5/9] hack to parse quirks files more leniently
 
 ---
  src/quirks.c | 6 +++++-
@@ -605,13 +605,13 @@ index 01065d5e..8346e312 100644
  
  	for (int i = 0; i < ndev; i++)
 -- 
-2.45.2
+2.47.0
 
 
-From 27a1020debd27fe9cbc7953638eeff5c0691b57f Mon Sep 17 00:00:00 2001
+From 4c4010c440f54fd222d90a8367bb7f5c4a2e4fcd Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 7 Aug 2021 10:40:19 -0700
-Subject: [PATCH 6/8] fling: stop when modifier pressed
+Subject: [PATCH 6/9] fling: stop when modifier pressed
 
 ---
  src/evdev-mt-touchpad-gestures.c |  1 +
@@ -653,13 +653,13 @@ index f6cd8c2d..bf02799e 100644
  	}
  
 -- 
-2.45.2
+2.47.0
 
 
-From fa0774561c0b66aa6ee10c3db3f59aecf2a66513 Mon Sep 17 00:00:00 2001
+From ac8a1801479aea2cd3cb4fd1b4ebd7e5e95e8c42 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 7 Aug 2021 10:42:44 -0700
-Subject: [PATCH 7/8] build.sh: Convenience script to build/install
+Subject: [PATCH 7/9] build.sh: Convenience script to build/install
 
 ---
  build.sh | 3 +++
@@ -676,13 +676,13 @@ index 00000000..378aa8b9
 +
 +ninja -C . && sudo systemctl stop gdm && sudo cp libinput.so.10.13.0 /usr/local/lib && sudo systemctl start gdm
 -- 
-2.45.2
+2.47.0
 
 
-From e19d3274e6df910e79d11f10e7d3936b5793faec Mon Sep 17 00:00:00 2001
+From 8cde306936a285bcd16c83a68f27c0eec2fb85d1 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 10 Apr 2022 13:13:30 -0700
-Subject: [PATCH 8/8] Defaults for Xiaomi Mi Pro with modified touchpad
+Subject: [PATCH 8/9] Defaults for Xiaomi Mi Pro with modified touchpad
  firmware
 
 ---
@@ -702,5 +702,36 @@ index 00000000..11c96433
 +AttrPalmPressureThreshold=150
 +AttrThumbPressureThreshold=40
 -- 
-2.45.2
+2.47.0
+
+
+From 7c154546e0e7035ba37d1038aff4efa34050965a Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Wed, 23 Oct 2024 08:58:32 -0700
+Subject: [PATCH 9/9] Add quirk for Logitech Touchpad T650
+
+---
+ quirks/30-vendor-logitech.quirks | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/quirks/30-vendor-logitech.quirks b/quirks/30-vendor-logitech.quirks
+index 7969cd08..5401c7f3 100644
+--- a/quirks/30-vendor-logitech.quirks
++++ b/quirks/30-vendor-logitech.quirks
+@@ -46,6 +46,13 @@ MatchVendor=0x046D
+ MatchProduct=0x4011
+ AttrPalmPressureThreshold=400
+ 
++[Logitech Rechargeable Touchpad T650]
++MatchBus=usb
++MatchVendor=0x046D
++MatchProduct=0x4101
++AttrPressureRange=-0:-2
++AttrPalmPressureThreshold=400
++
+ [Logitech MX Master (4041)]
+ MatchVendor=0x046D
+ MatchProduct=0x4041
+-- 
+2.47.0
 
