@@ -9,7 +9,7 @@ if [ "$1" = "-r" ]; then
 fi
 
 PKG="$1"  # package, e.g. 'mutter'
-REL="${2:-40}"  # Fedora version, e.g. '40'
+REL="${2:-41}"  # Fedora version, e.g. '40'
 PATCH="$(readlink -f "${3:-$PKG-f$REL.patch}")"
 PATCH_BASENAME="$(basename "$PATCH")"
 ARCH="${ARCH:-x86_64}"
@@ -81,7 +81,7 @@ cd ..
 
 if [ "$LOCALBUILD" = "no" ]; then
   # push to copr
-  copr-cli build andrewdelosreyes/gnome-patched pkg-new/*.src.rpm
+  copr-cli build -r fedora-${REL}-x86_64 andrewdelosreyes/gnome-patched pkg-new/*.src.rpm
 fi
 
 ############ update available
