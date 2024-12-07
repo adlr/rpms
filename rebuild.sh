@@ -16,13 +16,16 @@ ARCH="${ARCH:-x86_64}"
 
 REFRESH="--refresh"
 
-F_VERSION="$(dnf -q --releasever="$REL" --repo updates --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+#F_VERSION="$(dnf4 -q --releasever="$REL" --repo updates --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+F_VERSION="$(dnf -q $REFRESH --releasever="$REL" --repo updates list --showduplicates --available "$PKG.$ARCH" | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
 REPO="updates"
 if [ -z "$F_VERSION" ]; then
-  F_VERSION="$(dnf -q --releasever="$REL" --repo fedora --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+  #F_VERSION="$(dnf4 -q --releasever="$REL" --repo fedora --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+  F_VERSION="$(dnf -q $REFRESH --releasever="$REL" --repo fedora list --showduplicates --available "$PKG.$ARCH" | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
   REPO="fedora"
 fi
-COPR_VERSION="$(dnf -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+#COPR_VERSION="$(dnf4 -q --releasever="$REL" --repo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched --showduplicates --available list "$PKG.$ARCH" $REFRESH | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
+COPR_VERSION="$(dnf -q $REFRESH --releasever="$REL" --repo copr:copr.fedorainfracloud.org:andrewdelosreyes:gnome-patched list --showduplicates --available "$PKG.$ARCH" | grep "$PKG\.$ARCH" | awk '{print $2}' | sed 's/\.adlr//')"
 
 if [ "$F_VERSION" = "$COPR_VERSION" ]; then
   echo "No new version"
@@ -44,7 +47,7 @@ set -ex
 cd "$TMP"
 
 # Fetch upstream srpm
-dnf download --repo "$REPO" --source "$PKG" --disableexcludes=all --releasever="$REL"
+dnf4 download --repo "$REPO" --source "$PKG" --disableexcludes=all --releasever="$REL"
 
 mkdir pkg
 mkdir pkg-new
