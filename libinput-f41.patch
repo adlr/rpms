@@ -1,4 +1,4 @@
-From 32c8c17c2e76ecc9f48f40e96780724c320c0ed0 Mon Sep 17 00:00:00 2001
+From ec3c34ac57eaf00a902bf9f6a6d11297edb00fae Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 11:42:58 -0700
 Subject: [PATCH 1/9] adlr: chromium os accel curve
@@ -100,22 +100,22 @@ index ec6731c3..69e5669f 100644
 2.47.0
 
 
-From d7e8f5758737ad81e8c5140494ac696b0cf749fe Mon Sep 17 00:00:00 2001
+From 84a6dee278077ca867d0e887a96c3f7a080db87f Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 15:24:36 -0700
 Subject: [PATCH 2/9] kinetic scrolling hack
 
 ---
- src/evdev-mt-touchpad-gestures.c | 162 ++++++++++++++++++++++++++++++-
+ src/evdev-mt-touchpad-gestures.c | 163 ++++++++++++++++++++++++++++++-
  src/evdev-mt-touchpad.h          |  10 ++
  src/filter-touchpad.c            |  34 +++++--
- 3 files changed, 197 insertions(+), 9 deletions(-)
+ 3 files changed, 198 insertions(+), 9 deletions(-)
 
 diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
-index e92b9f4a..75efef6e 100644
+index d557353b..132b3995 100644
 --- a/src/evdev-mt-touchpad-gestures.c
 +++ b/src/evdev-mt-touchpad-gestures.c
-@@ -133,6 +133,16 @@ tp_gesture_init_scroll(struct tp_dispatch *tp)
+@@ -147,6 +147,16 @@ tp_gesture_init_scroll(struct tp_dispatch *tp)
  	tp->scroll.duration.v = 0;
  	tp->scroll.vector = zero;
  	tp->scroll.time_prev = 0;
@@ -132,11 +132,11 @@ index e92b9f4a..75efef6e 100644
  }
  
  static inline struct device_float_coords
-@@ -860,6 +870,38 @@ tp_gesture_tap_timeout(struct tp_dispatch *tp, uint64_t time)
+@@ -989,6 +999,38 @@ tp_gesture_tap_timeout(struct tp_dispatch *tp, uint64_t time)
  		tp_gesture_handle_event(tp, GESTURE_EVENT_HOLD_TIMEOUT, time);
  }
  
-+void
++static void
 +tp_gesture_fling_timeout(uint64_t now, void *data)
 +{
 +	struct tp_dispatch *tp = data;
@@ -171,7 +171,7 @@ index e92b9f4a..75efef6e 100644
  static void
  tp_gesture_detect_motion_gestures(struct tp_dispatch *tp, uint64_t time)
  {
-@@ -1064,6 +1106,19 @@ tp_gesture_handle_state_none(struct tp_dispatch *tp, uint64_t time)
+@@ -1193,6 +1235,19 @@ tp_gesture_handle_state_none(struct tp_dispatch *tp, uint64_t time)
  	if (ntouches == 0)
  		return;
  
@@ -191,14 +191,13 @@ index e92b9f4a..75efef6e 100644
  	if (ntouches == 1) {
  		first->gesture.initial = first->point;
  		tp->gesture.touches[0] = first;
-@@ -1180,8 +1235,25 @@ tp_gesture_handle_state_scroll(struct tp_dispatch *tp, uint64_t time)
+@@ -1337,7 +1392,24 @@ tp_gesture_handle_state_scroll(struct tp_dispatch *tp, uint64_t time)
  	if (normalized_is_zero(delta))
  		return;
  
 +	
 +	// grab before prev_time is overwritten with time
 +	uint64_t dt = time - tp->scroll.time_prev;
- 	tp_gesture_start(tp, time);
  	tp_gesture_apply_scroll_constraints(tp, &raw, &delta, time);
 +	//printf("post scroll: %f %f\n", delta.x, delta.y);
 +	// push into our buffer
@@ -217,11 +216,12 @@ index e92b9f4a..75efef6e 100644
  	evdev_post_scroll(tp->device,
  			  time,
  			  LIBINPUT_POINTER_AXIS_SOURCE_FINGER,
-@@ -1331,15 +1403,90 @@ tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time,
- 		tp_gesture_post_gesture(tp, time, ignore_motion);
+@@ -1595,15 +1667,91 @@ tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time,
+ 		tp_gesture_handle_state(tp, time, ignore_motion);
  }
  
-+struct scroll_out_event regress_scroll_velocity(struct scroll_out_event *last_scrolls,
++static struct scroll_out_event
++regress_scroll_velocity(struct scroll_out_event *last_scrolls,
 +						int len) {
 +	double tt_ = 0.0;  // Cumulative sum of t^2.
 +	double t_ = 0.0;   // Cumulative sum of t.
@@ -311,7 +311,7 @@ index e92b9f4a..75efef6e 100644
  }
  
  static void
-@@ -1537,6 +1684,15 @@ tp_init_gesture(struct tp_dispatch *tp)
+@@ -1822,6 +1970,15 @@ tp_init_gesture(struct tp_dispatch *tp)
  			    tp_libinput_context(tp),
  			    timer_name,
  			    tp_gesture_hold_timeout, tp);
@@ -328,10 +328,10 @@ index e92b9f4a..75efef6e 100644
  
  void
 diff --git a/src/evdev-mt-touchpad.h b/src/evdev-mt-touchpad.h
-index 26588dbb..cbd15bf5 100644
+index 48d1b113..7c8e9cea 100644
 --- a/src/evdev-mt-touchpad.h
 +++ b/src/evdev-mt-touchpad.h
-@@ -282,6 +282,11 @@ enum suspend_trigger {
+@@ -285,6 +285,11 @@ enum suspend_trigger {
  	SUSPEND_TABLET_MODE     = 0x8,
  };
  
@@ -343,7 +343,7 @@ index 26588dbb..cbd15bf5 100644
  struct tp_dispatch {
  	struct evdev_dispatch base;
  	struct evdev_device *device;
-@@ -417,6 +422,11 @@ struct tp_dispatch {
+@@ -419,6 +424,11 @@ struct tp_dispatch {
  		struct {
  			uint64_t h, v;
  		} duration;
@@ -427,7 +427,7 @@ index 69e5669f..4a1eeb3a 100644
 2.47.0
 
 
-From 504818fde08af71eefc906fda79600d3d016a594 Mon Sep 17 00:00:00 2001
+From 6d48cfe84436d7d664588f359354cbc1cd907fd0 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 17:41:19 -0700
 Subject: [PATCH 3/9] hack to be more aggressive about tap suspending
@@ -440,10 +440,10 @@ Seems to work in the gui, but not real life. needs debugging
  3 files changed, 27 insertions(+), 3 deletions(-)
 
 diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
-index 75efef6e..53f2e4d3 100644
+index 132b3995..b1cf76e4 100644
 --- a/src/evdev-mt-touchpad-gestures.c
 +++ b/src/evdev-mt-touchpad-gestures.c
-@@ -243,6 +243,7 @@ tp_gesture_post_pointer_motion(struct tp_dispatch *tp, uint64_t time)
+@@ -215,6 +215,7 @@ tp_gesture_post_pointer_motion(struct tp_dispatch *tp, uint64_t time)
  		struct device_float_coords unaccel;
  
  		unaccel = tp_scale_to_xaxis(tp, raw);
@@ -452,7 +452,7 @@ index 75efef6e..53f2e4d3 100644
  				      time,
  				      &delta,
 diff --git a/src/evdev-mt-touchpad.c b/src/evdev-mt-touchpad.c
-index 9bc6bf6a..f6cd8c2d 100644
+index 9c219a68..23b813db 100644
 --- a/src/evdev-mt-touchpad.c
 +++ b/src/evdev-mt-touchpad.c
 @@ -472,7 +472,7 @@ tp_stop_actions(struct tp_dispatch *tp, uint64_t time)
@@ -475,8 +475,8 @@ index 9bc6bf6a..f6cd8c2d 100644
 +	if (tp->tap.suspended) {
 +		tp->tap.delta_since_suspend.x += delta.x;
 +		tp->tap.delta_since_suspend.y += delta.y;
-+		if (abs(tp->tap.delta_since_suspend.x) < 4 &&
-+		    abs(tp->tap.delta_since_suspend.y) < 5)
++		if (fabsf(tp->tap.delta_since_suspend.x) < 4 &&
++		    fabsf(tp->tap.delta_since_suspend.y) < 5)
 +			return;
 +		tp_tap_resume(tp, time);
 +	}
@@ -515,18 +515,18 @@ index 9bc6bf6a..f6cd8c2d 100644
  		timeout = DEFAULT_KEYBOARD_ACTIVITY_TIMEOUT_1;
  	} else {
 diff --git a/src/evdev-mt-touchpad.h b/src/evdev-mt-touchpad.h
-index cbd15bf5..d2e92f5f 100644
+index 7c8e9cea..f2f4edae 100644
 --- a/src/evdev-mt-touchpad.h
 +++ b/src/evdev-mt-touchpad.h
-@@ -448,6 +448,7 @@ struct tp_dispatch {
- 		bool drag_lock_enabled;
+@@ -450,6 +450,7 @@ struct tp_dispatch {
+ 		enum libinput_config_drag_lock_state drag_lock;
  
  		unsigned int nfingers_down;	/* number of fingers down for tapping (excl. thumb/palm) */
 +		struct normalized_coords delta_since_suspend;
  	} tap;
  
  	struct {
-@@ -783,4 +784,8 @@ tp_init_thumb(struct tp_dispatch *tp);
+@@ -785,4 +786,8 @@ tp_init_thumb(struct tp_dispatch *tp);
  struct tp_touch*
  tp_thumb_get_touch(struct tp_dispatch *tp);
  
@@ -539,7 +539,7 @@ index cbd15bf5..d2e92f5f 100644
 2.47.0
 
 
-From 79be84024c40a2a79057a4653c81672b1b6c8b72 Mon Sep 17 00:00:00 2001
+From 33d5b0fad3b7e688c17d4ac0e98b73fcc433698f Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sun, 25 Jul 2021 18:10:29 -0700
 Subject: [PATCH 4/9] readme update
@@ -577,7 +577,7 @@ index e2333a62..166cb827 100644
 2.47.0
 
 
-From c589d2709493e1fd000a3856097a68ca166440f2 Mon Sep 17 00:00:00 2001
+From 8a33bb699065f0b382fd79b7fef4423a96179818 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 31 Jul 2021 09:13:53 -0700
 Subject: [PATCH 5/9] hack to parse quirks files more leniently
@@ -587,10 +587,10 @@ Subject: [PATCH 5/9] hack to parse quirks files more leniently
  1 file changed, 5 insertions(+), 1 deletion(-)
 
 diff --git a/src/quirks.c b/src/quirks.c
-index 01065d5e..8346e312 100644
+index 2bb37b4f..6719dad7 100644
 --- a/src/quirks.c
 +++ b/src/quirks.c
-@@ -1116,8 +1116,12 @@ parse_files(struct quirks_context *ctx, const char *data_path)
+@@ -1129,8 +1129,12 @@ parse_files(struct quirks_context *ctx, const char *data_path)
  			 data_path,
  			 namelist[idx]->d_name);
  
@@ -608,7 +608,7 @@ index 01065d5e..8346e312 100644
 2.47.0
 
 
-From 4c4010c440f54fd222d90a8367bb7f5c4a2e4fcd Mon Sep 17 00:00:00 2001
+From 700aac85fbc4086e59d730d443b1bec860d9c6dc Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 7 Aug 2021 10:40:19 -0700
 Subject: [PATCH 6/9] fling: stop when modifier pressed
@@ -619,10 +619,10 @@ Subject: [PATCH 6/9] fling: stop when modifier pressed
  2 files changed, 12 insertions(+)
 
 diff --git a/src/evdev-mt-touchpad-gestures.c b/src/evdev-mt-touchpad-gestures.c
-index 53f2e4d3..fe70dd85 100644
+index b1cf76e4..c1c6faa3 100644
 --- a/src/evdev-mt-touchpad-gestures.c
 +++ b/src/evdev-mt-touchpad-gestures.c
-@@ -1484,6 +1484,7 @@ tp_gesture_stop_twofinger_scroll(struct tp_dispatch *tp, uint64_t time)
+@@ -1749,6 +1749,7 @@ tp_gesture_stop_twofinger_scroll(struct tp_dispatch *tp, uint64_t time)
  	/* } else { */
  		tp->scroll.fling_scroll.dx = 0;
  		tp->scroll.fling_scroll.dy = 0;
@@ -631,7 +631,7 @@ index 53f2e4d3..fe70dd85 100644
  				  time,
  				  LIBINPUT_POINTER_AXIS_SOURCE_FINGER);
 diff --git a/src/evdev-mt-touchpad.c b/src/evdev-mt-touchpad.c
-index f6cd8c2d..bf02799e 100644
+index 23b813db..254bab54 100644
 --- a/src/evdev-mt-touchpad.c
 +++ b/src/evdev-mt-touchpad.c
 @@ -2348,6 +2348,17 @@ tp_keyboard_event(uint64_t time, struct libinput_event *event, void *data)
@@ -656,7 +656,7 @@ index f6cd8c2d..bf02799e 100644
 2.47.0
 
 
-From ac8a1801479aea2cd3cb4fd1b4ebd7e5e95e8c42 Mon Sep 17 00:00:00 2001
+From db866e62dbafe5ab833c8c6504b4711c63b43fa0 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@chromium.org>
 Date: Sat, 7 Aug 2021 10:42:44 -0700
 Subject: [PATCH 7/9] build.sh: Convenience script to build/install
@@ -679,7 +679,7 @@ index 00000000..378aa8b9
 2.47.0
 
 
-From 8cde306936a285bcd16c83a68f27c0eec2fb85d1 Mon Sep 17 00:00:00 2001
+From 6958764a91acf3e0df5ca904e4ba4bf2fb111d68 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 10 Apr 2022 13:13:30 -0700
 Subject: [PATCH 8/9] Defaults for Xiaomi Mi Pro with modified touchpad
@@ -705,7 +705,7 @@ index 00000000..11c96433
 2.47.0
 
 
-From 7c154546e0e7035ba37d1038aff4efa34050965a Mon Sep 17 00:00:00 2001
+From e1a42fff8d0d10812b1e6d731ba48f3e28d9048a Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Wed, 23 Oct 2024 08:58:32 -0700
 Subject: [PATCH 9/9] Add quirk for Logitech Touchpad T650
@@ -715,10 +715,10 @@ Subject: [PATCH 9/9] Add quirk for Logitech Touchpad T650
  1 file changed, 7 insertions(+)
 
 diff --git a/quirks/30-vendor-logitech.quirks b/quirks/30-vendor-logitech.quirks
-index 7969cd08..5401c7f3 100644
+index f2ef5ea3..0a4584db 100644
 --- a/quirks/30-vendor-logitech.quirks
 +++ b/quirks/30-vendor-logitech.quirks
-@@ -46,6 +46,13 @@ MatchVendor=0x046D
+@@ -51,6 +51,13 @@ MatchVendor=0x046D
  MatchProduct=0x4011
  AttrPalmPressureThreshold=400
  
