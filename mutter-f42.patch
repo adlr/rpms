@@ -1,0 +1,235 @@
+From dcfdf00449b6fc5c15f90f2810b8351987d71761 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@gmail.com>
+Date: Sat, 20 Apr 2024 19:23:46 -0700
+Subject: [PATCH 1/4] ClutterEvent: Allow setting scroll delta on event
+
+---
+ clutter/clutter/clutter-event.c | 22 ++++++++++++++++++++++
+ clutter/clutter/clutter-event.h |  4 ++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/clutter/clutter/clutter-event.c b/clutter/clutter/clutter-event.c
+index 8c17cee38..1f2a29cfc 100644
+--- a/clutter/clutter/clutter-event.c
++++ b/clutter/clutter/clutter-event.c
+@@ -566,6 +566,28 @@ clutter_event_get_related (const ClutterEvent *event)
+   return event->crossing.related;
+ }
+ 
++/**
++ * clutter_event_set_scroll_delta:
++ * @event: a #ClutterEvent of type %CLUTTER_SCROLL
++ * @dx: delta on the horizontal axis
++ * @dy: delta on the vertical axis
++ *
++ * Sets the precise scrolling information of @event.
++ */
++void
++clutter_event_set_scroll_delta (ClutterEvent *event,
++                                gdouble       dx,
++                                gdouble       dy)
++{
++  g_return_if_fail (event != NULL);
++  g_return_if_fail (event->type == CLUTTER_SCROLL);
++
++  event->scroll.direction = CLUTTER_SCROLL_SMOOTH;
++
++  event->scroll.delta_x = dx;
++  event->scroll.delta_y = dy;
++}
++
+ /**
+  * clutter_event_get_scroll_delta:
+  * @event: a #ClutterEvent of type %CLUTTER_SCROLL
+diff --git a/clutter/clutter/clutter-event.h b/clutter/clutter/clutter-event.h
+index 62f244c05..af097052b 100644
+--- a/clutter/clutter/clutter-event.h
++++ b/clutter/clutter/clutter-event.h
+@@ -214,6 +214,10 @@ ClutterActor *          clutter_event_get_related               (const ClutterEv
+ CLUTTER_EXPORT
+ ClutterScrollDirection  clutter_event_get_scroll_direction      (const ClutterEvent     *event);
+ CLUTTER_EXPORT
++void                    clutter_event_set_scroll_delta          (ClutterEvent           *event,
++                                                                 gdouble                 dx,
++                                                                 gdouble                 dy);
++CLUTTER_EXPORT
+ void                    clutter_event_get_scroll_delta          (const ClutterEvent     *event,
+                                                                  gdouble                *dx,
+                                                                  gdouble                *dy);
+-- 
+2.49.0
+
+
+From bc1cd80685c09e285b922608d47d4feed622423c Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@gmail.com>
+Date: Sat, 20 Apr 2024 19:40:11 -0700
+Subject: [PATCH 2/4] ClutterEvent: Allow setting finish flags
+
+---
+ clutter/clutter/clutter-event.c | 9 +++++++++
+ clutter/clutter/clutter-event.h | 4 ++++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/clutter/clutter/clutter-event.c b/clutter/clutter/clutter-event.c
+index 1f2a29cfc..7f139e720 100644
+--- a/clutter/clutter/clutter-event.c
++++ b/clutter/clutter/clutter-event.c
+@@ -1595,6 +1595,15 @@ clutter_event_get_scroll_source (const ClutterEvent *event)
+   return event->scroll.scroll_source;
+ }
+ 
++void
++clutter_event_set_scroll_finish_flags (ClutterEvent *event,
++                                       ClutterScrollFinishFlags finish_flags)
++{
++  g_return_if_fail (event != NULL);
++  g_return_if_fail (event->type == CLUTTER_SCROLL);
++
++  event->scroll.finish_flags = finish_flags;
++}
+ /**
+  * clutter_event_get_scroll_finish_flags:
+  * @event: an scroll event
+diff --git a/clutter/clutter/clutter-event.h b/clutter/clutter/clutter-event.h
+index af097052b..6672904d4 100644
+--- a/clutter/clutter/clutter-event.h
++++ b/clutter/clutter/clutter-event.h
+@@ -260,6 +260,10 @@ void                    clutter_event_get_gesture_motion_delta_unaccelerated (co
+ CLUTTER_EXPORT
+ ClutterScrollSource      clutter_event_get_scroll_source             (const ClutterEvent     *event);
+ 
++CLUTTER_EXPORT
++void                     clutter_event_set_scroll_finish_flags       (ClutterEvent             *event,
++                                                                      ClutterScrollFinishFlags  finish_flags);
++
+ CLUTTER_EXPORT
+ ClutterScrollFinishFlags clutter_event_get_scroll_finish_flags       (const ClutterEvent     *event);
+ 
+-- 
+2.49.0
+
+
+From 4af2af131e9f0e5827b5bd074433b279a7b47e0d Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sun, 26 Feb 2023 19:52:49 -0800
+Subject: [PATCH 3/4] adlr: hacks to slow down Chrome scroll speed and honor
+ scroll stops
+
+---
+ src/core/events.c | 30 ++++++++++++++++++++++++++++++
+ 1 file changed, 30 insertions(+)
+
+diff --git a/src/core/events.c b/src/core/events.c
+index 9adaa1801..a1ec55fd9 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -381,6 +381,36 @@ meta_display_handle_event (MetaDisplay        *display,
+     }
+ 
+   window = get_window_for_event (display, event, event_actor);
++  if (window && clutter_event_type(event) == CLUTTER_SCROLL &&
++      clutter_event_get_scroll_direction(event) == CLUTTER_SCROLL_SMOOTH) {
++    const char* text = meta_window_get_wm_class(window);
++    gdouble dx, dy;
++    clutter_event_get_scroll_delta(event, &dx, &dy);
++    const char* prefix = "google-chrome";
++    const char* prefix2 = "chrome-";
++    if (text && (!strncmp(text, prefix, strlen(prefix)) ||
++                 !strncmp(text, prefix2, strlen(prefix2)))) {
++      dx *= (0.6 * 53.0/120.0);
++      dy *= (0.6 * 53.0/120.0);
++
++      // Hack to transform finished flags to 0-len scrolls
++      // Since Chrome 109 is ignoring finished flags
++      ClutterScrollFinishFlags finish_flags =
++        clutter_event_get_scroll_finish_flags(event);
++      if (finish_flags & CLUTTER_SCROLL_FINISHED_VERTICAL) {
++        dy = 0;
++      }
++      if (finish_flags & CLUTTER_SCROLL_FINISHED_HORIZONTAL) {
++        dx = 0;
++      }
++      // Const cast -- yucky
++      clutter_event_set_scroll_finish_flags((ClutterEvent*)event,
++                                            CLUTTER_SCROLL_FINISHED_NONE);
++    }
++
++    // Const cast -- yucky
++    clutter_event_set_scroll_delta((ClutterEvent*)event, dx, dy);
++  }
+ 
+   if (window && !window->override_redirect &&
+       (event_type == CLUTTER_KEY_PRESS ||
+-- 
+2.49.0
+
+
+From 2a8d296d2394ab822626ebc42320c33f0b52bb06 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sun, 19 Feb 2023 09:14:26 -0800
+Subject: [PATCH 4/4] adlr: hide mouse cursor when typing
+
+show mouse cursor on any mouse event.
+
+This is b/c when the mouse pointer is hidden, the window loses mouse
+focus. That's fine when you're typing, but if you want to scroll, you
+need that focus to be present. I looked at trying to work around this
+by making a bigger diff, but I never got it to work when going in/out
+of overview mode, and a bigger diff is a risk when carrying this
+downstream.
+---
+ src/backends/meta-backend.c | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
+index 6b37c54ea..01bd6dc81 100644
+--- a/src/backends/meta-backend.c
++++ b/src/backends/meta-backend.c
+@@ -50,6 +50,7 @@
+ 
+ #include "backends/meta-backend-private.h"
+ 
++#include <linux/input.h>
+ #include <stdlib.h>
+ 
+ #include "backends/meta-a11y-manager.h"
+@@ -1152,6 +1153,7 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+   ClutterInputDevice *device;
+   ClutterInputDeviceType device_type;
+   uint32_t time_ms;
++  ClutterEventType event_type;
+ 
+   g_warn_if_fail (!priv->in_init);
+ 
+@@ -1170,7 +1172,9 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+     case CLUTTER_POINTER_DEVICE:
+     case CLUTTER_TOUCHPAD_DEVICE:
+       priv->last_pointer_motion = time_ms;
+-      meta_cursor_tracker_set_pointer_visible (cursor_tracker, TRUE);
++      event_type = clutter_event_type (event);
++      if (event_type != CLUTTER_KEY_PRESS && event_type != CLUTTER_KEY_RELEASE)
++        meta_cursor_tracker_set_pointer_visible (cursor_tracker, TRUE);
+       break;
+     case CLUTTER_TABLET_DEVICE:
+     case CLUTTER_PEN_DEVICE:
+@@ -1187,6 +1191,17 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+     default:
+       break;
+     }
++
++  /* meta_topic (META_DEBUG_BACKEND, "keyboard evt 0x%x 0x%02x %d", */
++  /*             clutter_event_get_state(event), */
++  /*             clutter_event_get_key_unicode(event), */
++  /*             clutter_event_get_event_code(event)); */
++  if (clutter_event_type(event) == CLUTTER_KEY_PRESS &&
++      clutter_event_get_state(event) <= 1 &&  // Modifiers: none or just shift
++      (clutter_event_get_key_unicode(event) > 0 ||  // Key: has some text or is escape OR
++       (clutter_event_get_event_code(event) >= KEY_LINEFEED &&  // key is a nav key
++        clutter_event_get_event_code(event) <= KEY_DELETE)))
++    meta_cursor_tracker_set_pointer_visible (cursor_tracker, FALSE);
+ }
+ 
+ static gboolean
+-- 
+2.49.0
+

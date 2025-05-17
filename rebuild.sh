@@ -9,7 +9,7 @@ if [ "$1" = "-r" ]; then
 fi
 
 PKG="$1"  # package, e.g. 'mutter'
-REL="${2:-41}"  # Fedora version, e.g. '40'
+REL="${2:-42}"  # Fedora version, e.g. '40'
 PATCH="$(readlink -f "${3:-$PKG-f$REL.patch}")"
 PATCH_BASENAME="$(basename "$PATCH")"
 ARCH="${ARCH:-x86_64}"
