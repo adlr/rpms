@@ -1,7 +1,7 @@
-From dcfdf00449b6fc5c15f90f2810b8351987d71761 Mon Sep 17 00:00:00 2001
+From 084dc0ce56ca3181322d86c246ba49f9d4f962f1 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:23:46 -0700
-Subject: [PATCH 1/4] ClutterEvent: Allow setting scroll delta on event
+Subject: [PATCH 1/5] ClutterEvent: Allow setting scroll delta on event
 
 ---
  clutter/clutter/clutter-event.c | 22 ++++++++++++++++++++++
@@ -60,10 +60,10 @@ index 62f244c05..af097052b 100644
 2.49.0
 
 
-From bc1cd80685c09e285b922608d47d4feed622423c Mon Sep 17 00:00:00 2001
+From 2833279fd485de8e70a162731f3c148d92111948 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:40:11 -0700
-Subject: [PATCH 2/4] ClutterEvent: Allow setting finish flags
+Subject: [PATCH 2/5] ClutterEvent: Allow setting finish flags
 
 ---
  clutter/clutter/clutter-event.c | 9 +++++++++
@@ -109,10 +109,10 @@ index af097052b..6672904d4 100644
 2.49.0
 
 
-From 4af2af131e9f0e5827b5bd074433b279a7b47e0d Mon Sep 17 00:00:00 2001
+From a0b40061f6aa35e026ae7b4527c74a78c4442b62 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 26 Feb 2023 19:52:49 -0800
-Subject: [PATCH 3/4] adlr: hacks to slow down Chrome scroll speed and honor
+Subject: [PATCH 3/5] adlr: hacks to slow down Chrome scroll speed and honor
  scroll stops
 
 ---
@@ -164,10 +164,10 @@ index 9adaa1801..a1ec55fd9 100644
 2.49.0
 
 
-From 2a8d296d2394ab822626ebc42320c33f0b52bb06 Mon Sep 17 00:00:00 2001
+From cbad2ca9e7218e27dfaf6a61339434984fed7d13 Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 19 Feb 2023 09:14:26 -0800
-Subject: [PATCH 4/4] adlr: hide mouse cursor when typing
+Subject: [PATCH 4/5] adlr: hide mouse cursor when typing
 
 show mouse cursor on any mouse event.
 
@@ -182,7 +182,7 @@ downstream.
  1 file changed, 16 insertions(+), 1 deletion(-)
 
 diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
-index 6b37c54ea..01bd6dc81 100644
+index 7df99030e..c92da53b0 100644
 --- a/src/backends/meta-backend.c
 +++ b/src/backends/meta-backend.c
 @@ -50,6 +50,7 @@
@@ -193,7 +193,7 @@ index 6b37c54ea..01bd6dc81 100644
  #include <stdlib.h>
  
  #include "backends/meta-a11y-manager.h"
-@@ -1152,6 +1153,7 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+@@ -1154,6 +1155,7 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
    ClutterInputDevice *device;
    ClutterInputDeviceType device_type;
    uint32_t time_ms;
@@ -201,7 +201,7 @@ index 6b37c54ea..01bd6dc81 100644
  
    g_warn_if_fail (!priv->in_init);
  
-@@ -1170,7 +1172,9 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+@@ -1172,7 +1174,9 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
      case CLUTTER_POINTER_DEVICE:
      case CLUTTER_TOUCHPAD_DEVICE:
        priv->last_pointer_motion = time_ms;
@@ -212,7 +212,7 @@ index 6b37c54ea..01bd6dc81 100644
        break;
      case CLUTTER_TABLET_DEVICE:
      case CLUTTER_PEN_DEVICE:
-@@ -1187,6 +1191,17 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
+@@ -1189,6 +1193,17 @@ update_pointer_visibility_from_event (MetaBackend  *backend,
      default:
        break;
      }
@@ -230,6 +230,89 @@ index 6b37c54ea..01bd6dc81 100644
  }
  
  static gboolean
+-- 
+2.49.0
+
+
+From db41e54970beaa19b689f9b3f2cd9132d6ecbace Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Michel=20D=C3=A4nzer?= <mdaenzer@redhat.com>
+Date: Tue, 3 Jun 2025 15:37:06 +0200
+Subject: [PATCH 5/5] kms: Unlink outputs from unused connectors in
+ update_outputs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Fixes meta_output_kms_from_kms_connector returning a stale pointer to an
+already-destroyed MetaOutputKms object after a monitor was disconnected.
+
+Fixes: 863b31ca ("output/kms: Add meta_output_kms_from_kms_connector()")
+
+v2:
+* Handle it from update_outputs. (Jonas Ådahl)
+v3:
+* Rename to meta_unlink_kms_connector. (Jonas Ådahl)
+* Always call meta_unlink_kms_connector first thing in the
+  update_outputs loop. (Jonas Ådahl)
+* Bail from meta_unlink_kms_connector if the quark isn't initialized yet
+  (before the first time meta_output_kms_new is called), to avoid
+  g_object_set_qdata logging a crtitical warning.
+
+Part-of: <https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/4474>
+---
+ src/backends/native/meta-gpu-kms.c    |  2 ++
+ src/backends/native/meta-output-kms.c | 11 +++++++++++
+ src/backends/native/meta-output-kms.h |  2 ++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/src/backends/native/meta-gpu-kms.c b/src/backends/native/meta-gpu-kms.c
+index 3e7cb7d88..4a15e99c7 100644
+--- a/src/backends/native/meta-gpu-kms.c
++++ b/src/backends/native/meta-gpu-kms.c
+@@ -351,6 +351,8 @@ init_outputs (MetaGpuKms *gpu_kms)
+       MetaOutput *old_output;
+       GError *error = NULL;
+ 
++      meta_unlink_kms_connector (kms_connector);
++
+       if (!meta_kms_connector_get_current_state (kms_connector))
+         continue;
+ 
+diff --git a/src/backends/native/meta-output-kms.c b/src/backends/native/meta-output-kms.c
+index 52d4b7988..975345232 100644
+--- a/src/backends/native/meta-output-kms.c
++++ b/src/backends/native/meta-output-kms.c
+@@ -99,6 +99,17 @@ meta_output_kms_from_kms_connector (MetaKmsConnector *connector)
+                              kms_connector_output_kms_quark);
+ }
+ 
++void
++meta_unlink_kms_connector (MetaKmsConnector *connector)
++{
++  if (!kms_connector_output_kms_quark)
++    return;
++
++  g_object_set_qdata (G_OBJECT (connector),
++                      kms_connector_output_kms_quark,
++                      NULL);
++}
++
+ static GBytes *
+ meta_output_kms_read_edid (MetaOutputNative *output_native)
+ {
+diff --git a/src/backends/native/meta-output-kms.h b/src/backends/native/meta-output-kms.h
+index 4391dc189..ac698bc60 100644
+--- a/src/backends/native/meta-output-kms.h
++++ b/src/backends/native/meta-output-kms.h
+@@ -41,6 +41,8 @@ uint32_t meta_output_kms_get_connector_id (MetaOutputKms *output_kms);
+ 
+ MetaOutputKms * meta_output_kms_from_kms_connector (MetaKmsConnector *connector);
+ 
++void meta_unlink_kms_connector (MetaKmsConnector *connector);
++
+ MetaOutputKms * meta_output_kms_new (MetaGpuKms        *gpu_kms,
+                                      MetaKmsConnector  *kms_connector,
+                                      MetaOutput        *old_output,
 -- 
 2.49.0
 
