@@ -1,4 +1,4 @@
-From 084dc0ce56ca3181322d86c246ba49f9d4f962f1 Mon Sep 17 00:00:00 2001
+From 1407e9ff747bd5f31c1eb4737ade4ee9b82c608e Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:23:46 -0700
 Subject: [PATCH 1/5] ClutterEvent: Allow setting scroll delta on event
@@ -57,10 +57,10 @@ index 62f244c05..af097052b 100644
                                                                   gdouble                *dx,
                                                                   gdouble                *dy);
 -- 
-2.49.0
+2.50.0
 
 
-From 2833279fd485de8e70a162731f3c148d92111948 Mon Sep 17 00:00:00 2001
+From 0816d25175e999d691de9dee01cd77dbe447262d Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@gmail.com>
 Date: Sat, 20 Apr 2024 19:40:11 -0700
 Subject: [PATCH 2/5] ClutterEvent: Allow setting finish flags
@@ -106,10 +106,10 @@ index af097052b..6672904d4 100644
  ClutterScrollFinishFlags clutter_event_get_scroll_finish_flags       (const ClutterEvent     *event);
  
 -- 
-2.49.0
+2.50.0
 
 
-From a0b40061f6aa35e026ae7b4527c74a78c4442b62 Mon Sep 17 00:00:00 2001
+From 9c77b3e0f6460b823e9e078e5e9e465761fc10cf Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 26 Feb 2023 19:52:49 -0800
 Subject: [PATCH 3/5] adlr: hacks to slow down Chrome scroll speed and honor
@@ -161,10 +161,10 @@ index 9adaa1801..a1ec55fd9 100644
    if (window && !window->override_redirect &&
        (event_type == CLUTTER_KEY_PRESS ||
 -- 
-2.49.0
+2.50.0
 
 
-From cbad2ca9e7218e27dfaf6a61339434984fed7d13 Mon Sep 17 00:00:00 2001
+From be683b01e3f1b89433aca8cc8ca18606889630fc Mon Sep 17 00:00:00 2001
 From: Andrew de los Reyes <adlr@rivosinc.com>
 Date: Sun, 19 Feb 2023 09:14:26 -0800
 Subject: [PATCH 4/5] adlr: hide mouse cursor when typing
@@ -231,88 +231,32 @@ index 7df99030e..c92da53b0 100644
  
  static gboolean
 -- 
-2.49.0
+2.50.0
 
 
-From db41e54970beaa19b689f9b3f2cd9132d6ecbace Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Michel=20D=C3=A4nzer?= <mdaenzer@redhat.com>
-Date: Tue, 3 Jun 2025 15:37:06 +0200
-Subject: [PATCH 5/5] kms: Unlink outputs from unused connectors in
- update_outputs
-MIME-Version: 1.0
-Content-Type: text/plain; charset=UTF-8
-Content-Transfer-Encoding: 8bit
+From f971e33c44a16f4e295d48d5fad38e8b89b6fc53 Mon Sep 17 00:00:00 2001
+From: Andrew de los Reyes <adlr@rivosinc.com>
+Date: Sat, 14 Jun 2025 11:08:20 -0700
+Subject: [PATCH 5/5] test fix
 
-Fixes meta_output_kms_from_kms_connector returning a stale pointer to an
-already-destroyed MetaOutputKms object after a monitor was disconnected.
-
-Fixes: 863b31ca ("output/kms: Add meta_output_kms_from_kms_connector()")
-
-v2:
-* Handle it from update_outputs. (Jonas Ådahl)
-v3:
-* Rename to meta_unlink_kms_connector. (Jonas Ådahl)
-* Always call meta_unlink_kms_connector first thing in the
-  update_outputs loop. (Jonas Ådahl)
-* Bail from meta_unlink_kms_connector if the quark isn't initialized yet
-  (before the first time meta_output_kms_new is called), to avoid
-  g_object_set_qdata logging a crtitical warning.
-
-Part-of: <https://gitlab.gnome.org/GNOME/mutter/-/merge_requests/4474>
 ---
- src/backends/native/meta-gpu-kms.c    |  2 ++
- src/backends/native/meta-output-kms.c | 11 +++++++++++
- src/backends/native/meta-output-kms.h |  2 ++
- 3 files changed, 15 insertions(+)
+ src/backends/native/meta-drm-lease.c | 3 +++
+ 1 file changed, 3 insertions(+)
 
-diff --git a/src/backends/native/meta-gpu-kms.c b/src/backends/native/meta-gpu-kms.c
-index 3e7cb7d88..4a15e99c7 100644
---- a/src/backends/native/meta-gpu-kms.c
-+++ b/src/backends/native/meta-gpu-kms.c
-@@ -351,6 +351,8 @@ init_outputs (MetaGpuKms *gpu_kms)
-       MetaOutput *old_output;
-       GError *error = NULL;
+diff --git a/src/backends/native/meta-drm-lease.c b/src/backends/native/meta-drm-lease.c
+index b86f71a7b..536b94064 100644
+--- a/src/backends/native/meta-drm-lease.c
++++ b/src/backends/native/meta-drm-lease.c
+@@ -202,6 +202,9 @@ is_connector_configured_for_lease (MetaKmsConnector *connector)
+     return FALSE;
  
-+      meta_unlink_kms_connector (kms_connector);
-+
-       if (!meta_kms_connector_get_current_state (kms_connector))
-         continue;
- 
-diff --git a/src/backends/native/meta-output-kms.c b/src/backends/native/meta-output-kms.c
-index 52d4b7988..975345232 100644
---- a/src/backends/native/meta-output-kms.c
-+++ b/src/backends/native/meta-output-kms.c
-@@ -99,6 +99,17 @@ meta_output_kms_from_kms_connector (MetaKmsConnector *connector)
-                              kms_connector_output_kms_quark);
+   monitor = meta_output_get_monitor (META_OUTPUT (output_kms));
++  if (monitor == NULL) {
++    return FALSE;
++  }
+   return meta_monitor_is_for_lease (monitor);
  }
  
-+void
-+meta_unlink_kms_connector (MetaKmsConnector *connector)
-+{
-+  if (!kms_connector_output_kms_quark)
-+    return;
-+
-+  g_object_set_qdata (G_OBJECT (connector),
-+                      kms_connector_output_kms_quark,
-+                      NULL);
-+}
-+
- static GBytes *
- meta_output_kms_read_edid (MetaOutputNative *output_native)
- {
-diff --git a/src/backends/native/meta-output-kms.h b/src/backends/native/meta-output-kms.h
-index 4391dc189..ac698bc60 100644
---- a/src/backends/native/meta-output-kms.h
-+++ b/src/backends/native/meta-output-kms.h
-@@ -41,6 +41,8 @@ uint32_t meta_output_kms_get_connector_id (MetaOutputKms *output_kms);
- 
- MetaOutputKms * meta_output_kms_from_kms_connector (MetaKmsConnector *connector);
- 
-+void meta_unlink_kms_connector (MetaKmsConnector *connector);
-+
- MetaOutputKms * meta_output_kms_new (MetaGpuKms        *gpu_kms,
-                                      MetaKmsConnector  *kms_connector,
-                                      MetaOutput        *old_output,
 -- 
-2.49.0
+2.50.0
 
