@@ -6,7 +6,7 @@ if [ $(whoami) != root ]; then
 fi
 set -ex
 cd rebuild-work/pkg
-sudo -u adlr CC="ccache gcc" CXX="ccache g++" fedpkg --release f42 local
+sudo -u adlr CC="ccache gcc" CXX="ccache g++" fedpkg --release f43 local
 rpm -e --nodeps mutter-debugsource mutter-debuginfo mutter mutter-common || true
 dnf install -y \
     */mutter-debugsource-49*.adlr.*.rpm \
