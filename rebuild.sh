@@ -8,8 +8,14 @@ if [ "$1" = "-r" ]; then
   shift
 fi
 
+LOCALBUILD=no
+if [ "$1" = "-l" ]; then
+  LOCALBUILD=yes
+  shift
+fi
+
 PKG="$1"  # package, e.g. 'mutter'
-REL="${2:-43}"  # Fedora version, e.g. '40'
+REL="${2:-44}"  # Fedora version, e.g. '40'
 PATCH="$(readlink -f "${3:-$PKG-f$REL.patch}")"
 PATCH_BASENAME="$(basename "$PATCH")"
 ARCH="${ARCH:-x86_64}"
@@ -47,7 +53,7 @@ set -ex
 cd "$TMP"
 
 # Fetch upstream srpm
-dnf4 download --repo "$REPO" --source "$PKG" --disableexcludes=all --releasever="$REL"
+dnf download --srpm --from-repo=fedora,updates --releasever="$REL" "$PKG"
 
 mkdir pkg
 mkdir pkg-new
@@ -74,7 +80,6 @@ python -c "$PATCH_SCRIPT"
 
 cp "$PATCH" .
 
-LOCALBUILD=no
 if [ "$LOCALBUILD" = "yes" ]; then
   rpmbuild -ba "$PKG".spec --define "_sourcedir $PWD" --define "_srcrpmdir $PWD/../pkg-new"
 fi
